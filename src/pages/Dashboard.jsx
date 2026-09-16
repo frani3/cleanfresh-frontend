@@ -1,4 +1,6 @@
+import { useEffect, useState } from "react";
 import { useMsal } from "@azure/msal-react";
+import { getHealth } from "../services/apiService";
 
 const styles = {
   container: { padding: "1.5rem" },
@@ -45,10 +47,27 @@ function getSummary(roles) {
 }
 
 function Dashboard() {
-  const { accounts } = useMsal();
+  const { instance, accounts } = useMsal();
   const account = accounts[0];
   const roles = account?.idTokenClaims?.roles || [];
   const { title, cards } = getSummary(roles);
+
+  const [health, setHealth] = useState(null);
+  const [healthError, setHealthError] = useState(null);
+
+  useEffect(() => {
+    if (!account) return;
+
+    getHealth(instance, account)
+      .then((data) => {
+        setHealthError(null);
+        setHealth(data);
+      })
+      .catch((error) => {
+        setHealth(null);
+        setHealthError(error?.response?.data?.message || error.message || "Error desconocido");
+      });
+  }, [instance, account]);
 
   return (
     <div style={styles.container}>
@@ -67,6 +86,11 @@ function Dashboard() {
           </div>
         ))}
       </div>
+
+      <h2>Estado del BFF</h2>
+      {healthError && <p style={{ color: "crimson" }}>Error al consultar /api/health: {healthError}</p>}
+      {!healthError && !health && <p>Consultando GET /api/health...</p>}
+      {health && <pre style={styles.card}>{JSON.stringify(health, null, 2)}</pre>}
     </div>
   );
 }
