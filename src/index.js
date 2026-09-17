@@ -7,18 +7,9 @@ import { msalConfig } from './authConfig';
 
 const msalInstance = new PublicClientApplication(msalConfig);
 
-msalInstance.initialize().then(() => {
-  // Manejar el redirect callback
-  msalInstance.handleRedirectPromise().then((response) => {
-    if (response) {
-      msalInstance.setActiveAccount(response.account);
-    }
-  });
-
-  const root = ReactDOM.createRoot(document.getElementById('root'));
-  root.render(
-    <MsalProvider instance={msalInstance}>
-      <App />
-    </MsalProvider>
-  );
-});
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <MsalProvider instance={msalInstance}>
+    <App />
+  </MsalProvider>
+);

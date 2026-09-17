@@ -2,42 +2,24 @@ import { useEffect, useState } from "react";
 import { useMsal } from "@azure/msal-react";
 import { getHealth } from "../services/apiService";
 
-const styles = {
-  container: { padding: "1.5rem" },
-  grid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-    gap: "1rem",
-    marginTop: "1rem",
-  },
-  card: {
-    border: "1px solid #ddd",
-    borderRadius: "8px",
-    padding: "1rem",
-    backgroundColor: "#fafafa",
-  },
-  cardValue: { fontSize: "1.8rem", fontWeight: "bold", margin: "0.25rem 0" },
-  cardLabel: { color: "#666", fontSize: "0.9rem" },
-};
-
 // Datos mockeados: en producción vendrían de la API de órdenes/reportería.
 const ADMIN_SUMMARY = [
-  { label: "Órdenes activas", value: 42 },
-  { label: "Locales operando", value: 8 },
-  { label: "Ingresos del mes", value: "$3,250,000" },
-  { label: "Alertas de auditoría", value: 3 },
+  { label: "Órdenes activas", value: 42, icon: "📦" },
+  { label: "Locales operando", value: 8, icon: "🏬" },
+  { label: "Ingresos del mes", value: "$3,250,000", icon: "💰" },
+  { label: "Alertas de auditoría", value: 3, icon: "⚠️" },
 ];
 
 const OPERADOR_SUMMARY = [
-  { label: "Órdenes pendientes", value: 12 },
-  { label: "Órdenes en proceso", value: 5 },
-  { label: "Órdenes listas para entrega", value: 4 },
+  { label: "Órdenes pendientes", value: 12, icon: "🕒" },
+  { label: "Órdenes en proceso", value: 5, icon: "🧼" },
+  { label: "Órdenes listas para entrega", value: 4, icon: "✅" },
 ];
 
 const CLIENTE_SUMMARY = [
-  { label: "Órdenes activas", value: 1 },
-  { label: "Órdenes completadas", value: 7 },
-  { label: "Puntos de fidelidad", value: 140 },
+  { label: "Órdenes activas", value: 1, icon: "📦" },
+  { label: "Órdenes completadas", value: 7, icon: "✅" },
+  { label: "Puntos de fidelidad", value: 140, icon: "⭐" },
 ];
 
 function getSummary(roles) {
@@ -70,27 +52,59 @@ function Dashboard() {
   }, [instance, account]);
 
   return (
-    <div style={styles.container}>
-      <h1>Dashboard</h1>
-      <p>
-        Bienvenido, {account?.name || account?.username}
-        {roles.length > 0 ? ` (${roles.join(", ")})` : ""}
-      </p>
-
-      <h2>{title}</h2>
-      <div style={styles.grid}>
-        {cards.map((card) => (
-          <div key={card.label} style={styles.card}>
-            <div style={styles.cardValue}>{card.value}</div>
-            <div style={styles.cardLabel}>{card.label}</div>
-          </div>
-        ))}
+    <div className="page">
+      <div className="page-header">
+        <h1 className="page-title">Dashboard</h1>
+        <p className="page-subtitle">
+          Bienvenido, {account?.name || account?.username}
+          {roles.length > 0 ? ` (${roles.join(", ")})` : ""}
+        </p>
       </div>
 
-      <h2>Estado del BFF</h2>
-      {healthError && <p style={{ color: "crimson" }}>Error al consultar /api/health: {healthError}</p>}
-      {!healthError && !health && <p>Consultando GET /api/health...</p>}
-      {health && <pre style={styles.card}>{JSON.stringify(health, null, 2)}</pre>}
+      <div className="section">
+        <h2 className="section-title">{title}</h2>
+        <div className="card-grid">
+          {cards.map((card, index) => (
+            <div
+              key={card.label}
+              className={index % 2 === 1 ? "kpi-card accent-blue" : "kpi-card"}
+            >
+              <div className="kpi-icon" role="img" aria-hidden="true">
+                {card.icon}
+              </div>
+              <div>
+                <div className="kpi-value">{card.value}</div>
+                <div className="kpi-label">{card.label}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="section">
+        <h2 className="section-title">🩺 Estado del BFF</h2>
+        {healthError && (
+          <div className="status-banner error">
+            <span className="status-dot" />
+            Error al consultar /api/health: {healthError}
+          </div>
+        )}
+        {!healthError && !health && (
+          <div className="status-banner pending">
+            <span className="status-dot" />
+            Consultando GET /api/health...
+          </div>
+        )}
+        {health && (
+          <>
+            <div className="status-banner ok">
+              <span className="status-dot" />
+              BFF disponible
+            </div>
+            <pre className="status-pre">{JSON.stringify(health, null, 2)}</pre>
+          </>
+        )}
+      </div>
     </div>
   );
 }

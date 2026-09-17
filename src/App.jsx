@@ -1,27 +1,14 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useIsAuthenticated, useMsal } from "@azure/msal-react";
 import { loginRequest } from "./authConfig";
-import Navbar from "./components/Navbar";
+import Sidebar from "./components/Sidebar";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Dashboard from "./pages/Dashboard";
 import Orders from "./pages/Orders";
 import Catalog from "./pages/Catalog";
 import Reports from "./pages/Reports";
 import Audit from "./pages/Audit";
-
-const styles = {
-  loginContainer: { padding: "2rem", textAlign: "center" },
-  loginBtn: {
-    marginTop: "1rem",
-    padding: "0.6rem 1.2rem",
-    border: "none",
-    borderRadius: "4px",
-    backgroundColor: "#0f5132",
-    color: "#fff",
-    cursor: "pointer",
-    fontSize: "1rem",
-  },
-};
+import "./App.css";
 
 function Login() {
   const { instance } = useMsal();
@@ -31,21 +18,27 @@ function Login() {
   };
 
   return (
-    <div style={styles.loginContainer}>
-      <h1>Clean&amp;Fresh Manager</h1>
-      <p>Por favor inicia sesión para continuar</p>
-      <button style={styles.loginBtn} onClick={handleLogin}>
-        Iniciar sesión con Microsoft
-      </button>
+    <div className="login-screen">
+      <div className="login-card">
+        <div className="login-logo" role="img" aria-label="Clean&Fresh">
+          🧺
+        </div>
+        <h1>Clean&amp;Fresh Manager</h1>
+        <p>Por favor inicia sesión para continuar</p>
+        <button className="login-btn" onClick={handleLogin}>
+          Iniciar sesión con Microsoft
+        </button>
+        <div className="login-footer">Gestión de lavanderías Clean&amp;Fresh</div>
+      </div>
     </div>
   );
 }
 
 function AppLayout({ children }) {
   return (
-    <div>
-      <Navbar />
-      {children}
+    <div className="app-shell">
+      <Sidebar />
+      <div className="main-content">{children}</div>
     </div>
   );
 }

@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
-    "@azure/msal-browser": "^5.21.0",
-    "@azure/msal-react": "^5.7.0",
+    "@azure/msal-browser": "^5.22.0",
+    "@azure/msal-react": "^5.7.1",
     "axios": "^1.20.0",
     "cra-template": "1.3.0",
     "react": "^19.3.0",
@@ -13,6 +13,7 @@
     "react-scripts": "5.0.1"
   },
   "scripts": {
+    "postinstall": "node scripts/copy-redirect-bridge.js",
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",

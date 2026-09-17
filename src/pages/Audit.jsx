@@ -1,20 +1,3 @@
-const styles = {
-  container: { padding: "1.5rem" },
-  timeline: { marginTop: "1.5rem", borderLeft: "3px solid #0f5132", paddingLeft: "1.25rem" },
-  event: { marginBottom: "1.25rem", position: "relative" },
-  dot: {
-    position: "absolute",
-    left: "-1.62rem",
-    top: "0.2rem",
-    width: "0.7rem",
-    height: "0.7rem",
-    borderRadius: "50%",
-    backgroundColor: "#0f5132",
-  },
-  meta: { color: "#666", fontSize: "0.85rem" },
-  action: { fontWeight: "bold" },
-};
-
 // Eventos de auditoría mockeados; en producción vendrían de la API
 // (GET /audit/events), registrados por acciones sensibles del sistema.
 const AUDIT_EVENTS = [
@@ -23,7 +6,7 @@ const AUDIT_EVENTS = [
     fecha: "2026-09-10 09:12",
     usuario: "admin@cleanfresh.com",
     accion: "Cambio de estado de orden",
-    detalle: "ORD-1002 pasó de 'Recibida' a 'En lavado'",
+    detalle: "ORD-1002 pasó de 'Aceptado' a 'En preparación'",
   },
   {
     id: 2,
@@ -57,19 +40,26 @@ const AUDIT_EVENTS = [
 
 function Audit() {
   return (
-    <div style={styles.container}>
-      <h1>Auditoría</h1>
-      <p>Historial de eventos relevantes del sistema — visible solo para Admin.</p>
+    <div className="page">
+      <div className="page-header">
+        <h1 className="page-title">Auditoría</h1>
+        <p className="page-subtitle">
+          Historial de eventos relevantes del sistema — visible solo para Admin.
+        </p>
+      </div>
 
-      <div style={styles.timeline}>
+      <div className="timeline">
         {AUDIT_EVENTS.map((event) => (
-          <div key={event.id} style={styles.event}>
-            <span style={styles.dot} />
-            <div style={styles.meta}>
-              {event.fecha} · {event.usuario}
+          <div key={event.id} className="timeline-item">
+            <span className="timeline-dot" />
+            <div className="timeline-card">
+              <div className="timeline-meta">
+                <span>🕒 {event.fecha}</span>
+                <span>· {event.usuario}</span>
+              </div>
+              <div className="timeline-action">{event.accion}</div>
+              <div className="timeline-detail">{event.detalle}</div>
             </div>
-            <div style={styles.action}>{event.accion}</div>
-            <div>{event.detalle}</div>
           </div>
         ))}
       </div>
