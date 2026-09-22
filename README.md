@@ -1,70 +1,88 @@
-# Getting Started with Create React App
+# Clean&Fresh Manager — Frontend
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Frontend en React (Create React App) del sistema de gestión de la
+cadena de lavanderías Clean&Fresh. Proyecto individual para **EP1** de
+**DSY1107 Cloud Native 1** (DuocUC).
 
-## Available Scripts
+Dashboard de una sola pantalla ("bento grid") que cambia de vista según
+el rol leído del JWT (Admin / Operador / Cliente), autenticado contra
+Azure Entra External ID (CIAM) con MSAL y conectado a un BFF en Spring
+Boot que a su vez habla con dos microservicios (órdenes y catálogo).
 
-In the project directory, you can run:
+## Stack
 
-### `npm start`
+- React 18 (Create React App, JavaScript — sin TypeScript)
+- MSAL Browser 5 / MSAL React 5
+- Axios (con interceptor que adjunta el idToken en cada llamada)
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+## Requisitos
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+- Node.js 18+
+- El BFF y los dos microservicios corriendo (ver sus propios README)
 
-### `npm test`
+## Configuración
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+Crear un archivo `.env` en la raíz con:
 
-### `npm run build`
+```
+REACT_APP_CLIENT_ID=<client id de la app registration del frontend>
+REACT_APP_TENANT_ID=<tenant id de Azure Entra External ID>
+REACT_APP_API_CLIENT_ID=<client id de la app registration del API/BFF>
+```
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+Los valores reales están documentados en `CLAUDE.md` (no se suben acá
+por ser un archivo de contexto de desarrollo, pero no contienen
+secretos — son identificadores públicos de una app pública de MSAL).
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+## Levantar en local
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+```bash
+npm install
+npm start
+```
 
-### `npm run eject`
+Abre [http://localhost:3000](http://localhost:3000). Necesita que el
+BFF esté corriendo en `http://localhost:8080` (ver `authConfig.js` →
+`protectedResources.bffApi.endpoint`).
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+## Usuarios de prueba
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+Tres cuentas de prueba en el tenant CIAM, una por rol (Admin, Operador,
+Cliente) — ver `CLAUDE.md` para las credenciales.
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+## Scripts
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+- `npm start` — modo desarrollo
+- `npm run build` — build de producción
+- `npx eslint src --ext .js,.jsx` — lint
 
-## Learn More
+## Estructura
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+```
+src/
+├── authConfig.js          # Configuración MSAL
+├── index.js                # MsalProvider + inicialización de la cuenta activa
+├── App.jsx                 # AuthGuard + Navbar + BentoDashboard
+├── components/
+│   ├── AuthGuard.jsx        # Pantalla de login / protección de la app
+│   └── Navbar.jsx           # Usuario, rol y logout
+├── pages/
+│   └── BentoDashboard.jsx  # Dashboard único, cambia de vista según el rol
+└── services/
+    └── apiService.js       # Cliente axios + interceptor de auth hacia el BFF
+```
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+## Documentación de cambios (specs/)
 
-### Code Splitting
+Los cambios funcionales de este proyecto se documentan con una
+metodología manual de Spec-Driven Development en
+[`specs/README.md`](specs/README.md): cada funcionalidad nueva o
+corrección tiene su spec/fix con Acceptance Criteria y su verificación,
+numerados de forma correlativa. Revisar ese índice antes de tocar el
+dashboard, para no duplicar algo ya resuelto ahí.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+## Arquitectura y decisiones técnicas
 
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+Ver [`CLAUDE.md`](CLAUDE.md) para el detalle completo: configuración de
+Azure, por qué se usa el idToken en vez del accessToken, el patrón de
+lectura de roles tras un F5, y la pauta de evaluación de EP1.
