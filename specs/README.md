@@ -52,6 +52,7 @@ sin importar el tipo.
 | 025 | Spec | Pedido real: Cliente crea la orden en el backend (POST), visible para Operador/Admin | ✅ Verificado | [025-spec-pedido-real-cliente-post.md](025-spec-pedido-real-cliente-post.md) |
 | 026 | Spec | Migración de MSAL/Azure a AWS Cognito (frontend + BFF) | ✅ Verificado en vivo (ver Fix 027) | [026-spec-migracion-cognito.md](026-spec-migracion-cognito.md) |
 | 027 | Fix | Validar scope en el BFF + fixes en vivo de la migración a Cognito | ✅ Verificado en vivo | [027-fix-validar-scope-y-fixes-cognito-en-vivo.md](027-fix-validar-scope-y-fixes-cognito-en-vivo.md) |
+| 028 | Spec | Despliegue en AWS: BFF y microservicios en EC2 detrás de API Gateway | ✅ Verificado en vivo | [028-spec-despliegue-aws-ec2-api-gateway.md](028-spec-despliegue-aws-ec2-api-gateway.md) |
 
 ## Ítems superados (superseded)
 

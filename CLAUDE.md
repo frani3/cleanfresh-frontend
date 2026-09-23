@@ -66,6 +66,36 @@ Pool de Cognito si hace falta recrearlas.
 
 ---
 
+## Despliegue en AWS (Spec 028)
+
+Además de correr todo en local, el BFF y los dos microservicios están
+desplegados en 3 instancias EC2 (`us-east-1`), con API Gateway como
+intermediario delante del BFF. El frontend sigue en `localhost:3000` —
+no se desplegó, solo se lo apuntó a un backend real en la nube vía
+`.env` (`REACT_APP_BFF_URL`).
+
+| Recurso | Valor |
+|---|---|
+| EC2 `cleanfresh-bff` | `13.222.150.67:8080` |
+| EC2 `cleanfresh-orders` | `3.86.143.171:8081` |
+| EC2 `cleanfresh-catalog` | `44.203.57.139:8082` |
+| API Gateway (`cleanfresh-api`) | `https://hucylsdii5.execute-api.us-east-1.amazonaws.com` |
+| Ruta `ANY /{proxy+}` | → BFF, con JWT Authorizer de Cognito atado |
+| Ruta `OPTIONS /{proxy+}` | → BFF, sin authorizer (preflight CORS no manda token) |
+
+**CORS**: lo resuelve el propio BFF (su `CorsConfigurationSource` ya
+existente), no el CORS nativo de API Gateway — se probó ese camino
+primero y API Gateway terminaba descartando los headers CORS del
+backend sin reemplazarlos del todo, dejando el preflight sin headers.
+Se sacó la config de CORS a nivel API y con eso el BFF contesta el
+preflight él solo, correctamente.
+
+**Costo real:** estos son recursos reales de AWS con costo asociado —
+apagar/eliminar las 3 EC2 y la API Gateway después de la evaluación si
+no se van a seguir usando.
+
+---
+
 ## Variables de Entorno
 
 ### Frontend (`.env` en raíz del proyecto)
