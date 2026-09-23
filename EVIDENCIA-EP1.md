@@ -1,9 +1,14 @@
 # Evidencia EP1 — Guía paso a paso para el profesor
 
 Esta guía muestra, paso a paso, cómo comprobar los dos indicadores de
-la pauta de EP1 (MSAL 60% + BFF 40%) sobre este proyecto. No requiere
-leer el código para creerlo: cada punto tiene una acción concreta
-(click, curl, F12) y qué se espera ver.
+la pauta de EP1 (Login/Cognito 60% + BFF 40%) sobre este proyecto. No
+requiere leer el código para creerlo: cada punto tiene una acción
+concreta (click, curl, F12) y qué se espera ver.
+
+> El proyecto usa AWS Cognito como proveedor de identidad (antes usaba
+> Azure AD/MSAL; el requisito de la pauta cambió). La mecánica que se
+> evalúa es la misma: login delegado a un tercero, roles leídos del
+> token, y un backend que valida ese token antes de responder.
 
 ## Antes de empezar
 
@@ -21,8 +26,8 @@ cd ms-cleanfresh-catalog
 
 # Terminal 3 — ms-cleanfresh-bff (:8080)
 cd ms-cleanfresh-bff
-$env:AZURE_TENANT_ID = "..."
-$env:AZURE_API_CLIENT_ID = "..."
+$env:COGNITO_ISSUER_URI = "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_yi2mx8XVs"
+$env:COGNITO_CLIENT_ID = "5ct1362lebamr1fpmotcofinl6"
 .\mvnw.cmd spring-boot:run
 
 # Terminal 4 — frontend (:3000)
@@ -30,27 +35,27 @@ cd cleanfresh-frontend
 npm start
 ```
 
-Usuarios de prueba (uno por rol, ver `CLAUDE.md` para las
-credenciales): `Admin@CleanFreshChain.onmicrosoft.com`,
-`Operador@CleanFreshChain.onmicrosoft.com`,
-`Cliente@CleanFreshChain.onmicrosoft.com`.
+Usuarios de prueba: uno por rol (Admin, Operador, Cliente), dados de
+alta en el User Pool de Cognito como grupos con esos mismos nombres —
+ver `CLAUDE.md` para el detalle de configuración.
 
 ---
 
-## Indicador 1 — MSAL (60%)
+## Indicador 1 — Login / Cognito (60%)
 
 ### 1. Login y logout funcionando
 
 1. Abrir `http://localhost:3000` sin sesión iniciada (o en una ventana
    de incógnito).
 2. **Se espera:** pantalla de login de la app (no el dashboard).
-3. Click en "Iniciar sesión con Microsoft" → redirige a
-   `CleanFreshChain.ciamlogin.com` → loguearse con cualquiera de los 3
+3. Click en "Iniciar sesión" → redirige al Hosted UI de Cognito
+   (`...amazoncognito.com`) → loguearse con cualquiera de los 3
    usuarios de prueba.
 4. **Se espera:** vuelve a `localhost:3000` ya autenticado, mostrando
    el dashboard correspondiente al rol.
 5. Click en "Salir" (navbar, arriba a la derecha).
-6. **Se espera:** vuelve a la pantalla de login.
+6. **Se espera:** vuelve a la pantalla de login (Cognito también cierra
+   la sesión de su lado, no solo el navegador local).
 
 ### 2. Guards operando sin fallas
 
@@ -75,7 +80,8 @@ credenciales): `Admin@CleanFreshChain.onmicrosoft.com`,
 
 1. Mismo Network tab del paso anterior: confirmar que las respuestas
    son `200 OK`, no `401`.
-2. Opcional: copiar el valor del token y pegarlo en
+2. Opcional: copiar el valor del token (es el **access token**, no el
+   idToken — con Cognito sí hay un scope de API propio) y pegarlo en
    [jwt.io](https://jwt.io) para mostrar el payload decodificado (sin
    validar la firma ahí, solo para leer los claims).
 
@@ -86,8 +92,15 @@ credenciales): `Admin@CleanFreshChain.onmicrosoft.com`,
 2. **Se espera:** cada uno ve su vista correspondiente (Admin /
    Operador / Cliente) y su badge de rol correcto en el navbar.
 3. Para verlo "crudo": F12 → **Application** → Local Storage → buscar
-   la entrada de MSAL con el idToken → decodificarlo (jwt.io) → mostrar
-   el claim `roles`.
+   la entrada `oidc.user:...` (la guarda `oidc-client-ts`) →
+   decodificar el `id_token` de adentro en jwt.io → mostrar el claim
+   `cognito:groups`.
+4. El **scope** se ve decodificando el **access_token** (no el
+   idToken) de la misma entrada: tiene un claim `scope` con la lista
+   separada por espacios, incluyendo
+   `https://api.cleanfresh.com/access_as_user`. Ese mismo claim lo
+   valida el BFF del lado servidor (ver Indicador 2, punto 1) — no es
+   solo algo que se pide al loguearse y se ignora después.
 
 ---
 
@@ -96,7 +109,7 @@ credenciales): `Admin@CleanFreshChain.onmicrosoft.com`,
 Todo esto se prueba con `curl`, sin necesidad del frontend — es la
 forma más directa de comprobarlo sin depender de la UI.
 
-### 1. Validación de issuer / audience / firma / vigencia
+### 1. Validación de issuer / tipo de token / client / scope / firma / vigencia
 
 ```bash
 # Sin token -> 401
@@ -106,21 +119,30 @@ curl -i http://localhost:8080/api/orders
 curl -i http://localhost:8080/api/orders -H "Authorization: Bearer esto.no.es.un.jwt"
 ```
 
-**Se espera:** `401 Unauthorized` en ambos casos. Esta validación la
-hace Spring de forma automática a partir de `issuer-uri` y `audiences`
-en `application.yaml` del BFF (`oauth2ResourceServer.jwt()` en
-`SecurityConfig.java`) — no hay código manual de validación, lo cual es
-justamente lo que pide la pauta ("BFF valida issuer y audience de forma
-correcta").
+**Se espera:** `401 Unauthorized` en ambos casos. La validación de
+issuer/firma/vigencia la hace Spring de forma automática a partir de
+`issuer-uri` en `application.yaml` del BFF. Como los access tokens de
+Cognito no tienen claim `aud` (a diferencia de Azure), se agregó un
+validador propio (`CognitoTokenValidator`, en `SecurityConfig.java`)
+que verifica tres cosas más allá de lo automático:
+
+- `token_use == "access"` (rechaza un idToken colado en vez del access
+  token que corresponde).
+- `client_id` == el de esta app (equivalente funcional a validar
+  "audience", que Cognito no expone como claim tradicional).
+- `scope` contiene `https://api.cleanfresh.com/access_as_user` (si
+  falta, responde `401` con `error="insufficient_scope"` — confirma
+  que el scope no es solo algo que se pide al loguearse, se revisa de
+  verdad en cada request).
 
 ### 2. Autorización por rol
 
 Con un token real de **Cliente** (sacado del Network tab del frontend,
-logueado como Cliente):
+logueado como Cliente — el access token, no el idToken):
 
 ```bash
 curl -i http://localhost:8080/api/orders/estado/CREADO \
-  -H "Authorization: Bearer <idToken de Cliente>"
+  -H "Authorization: Bearer <access_token de Cliente>"
 ```
 
 **Se espera:** `403 Forbidden` — ese endpoint tiene
@@ -131,7 +153,7 @@ Con el mismo token contra un endpoint que sí le corresponde:
 
 ```bash
 curl -i http://localhost:8080/api/orders \
-  -H "Authorization: Bearer <idToken de Cliente>"
+  -H "Authorization: Bearer <access_token de Cliente>"
 ```
 
 **Se espera:** `200 OK`.
@@ -140,7 +162,8 @@ curl -i http://localhost:8080/api/orders \
 
 Resumen de la diferencia, ya demostrada arriba:
 
-- **401** = no autenticado (sin token o token inválido/vencido).
+- **401** = no autenticado (sin token, token inválido/vencido, o del
+  tipo/app equivocados).
 - **403** = autenticado pero sin permiso para ese endpoint (rol
   incorrecto).
 
@@ -168,3 +191,32 @@ loguearse, dejarlo filtrado por `8080`, y hacer el login en vivo: se ve
 el token viajando en cada llamada y el `200`/`403` según corresponda.
 Combinado con 2-3 `curl` sin token mostrando el `401`, cubre los dos
 indicadores completos sin depender de que la UI "se vea bien".
+
+## Antes de la demo: qué ya se probó en vivo y qué falta
+
+La migración de MSAL a Cognito (Spec 026) se probó en un navegador real
+y se corrigieron 3 problemas que solo aparecían con login real: typo en
+`.env`, el jar del BFF corriendo desactualizado (seguía validando
+contra Azure), y un mismatch `username`/email que hacía que los
+pedidos del Cliente no aparecieran en "Tus pedidos" (Fix 027, que
+también agregó la validación de `scope`). Con eso:
+
+- ✅ Login/logout, interceptor, y creación real de pedidos (Cliente) —
+  confirmados en vivo.
+- ✅ 401 (sin token / token con firma inválida) — confirmado en vivo
+  varias veces.
+- ✅ Validación de scope — confirmado en vivo ("todo bien" tras
+  reiniciar el BFF con `CognitoTokenValidator` chequeando `scope`).
+
+**Todavía sin confirmar en vivo:**
+
+- Las cuentas de Admin y Operador (solo se probó con Cliente en esta
+  sesión — el código es el mismo, pero no hay evidencia fresca de
+  las 3).
+- Un 403 real (rol insuficiente) contra un token de Cognito — la
+  sección "Autorización por rol" de arriba explica cómo probarlo.
+- El mapeo `SUCURSAL_POR_OPERADOR` en `OrderService.java` (BFF) sigue
+  con el valor viejo de Azure (`operador@cleanfreshchain.onmicrosoft.com`);
+  con Cognito debería ser el `username` real del Operador de prueba
+  (un valor tipo UUID, no un email) — sin ajustar esto, el filtro por
+  sucursal del Operador probablemente no funcione.

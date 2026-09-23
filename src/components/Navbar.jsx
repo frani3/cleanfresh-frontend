@@ -1,8 +1,6 @@
-import { useEffect, useState } from "react";
-import { useMsal } from "@azure/msal-react";
-import { InteractionStatus } from "@azure/msal-browser";
+import { useAuth } from "react-oidc-context";
 import { WashingMachine, Sparkles, LogOut, Shield, Wrench, User } from "lucide-react";
-import { loginRequest } from "../authConfig";
+import { cognitoAuthConfig, cognitoDomain } from "../authConfig";
 
 const ROLE_BADGE = {
   Admin: { className: "role-badge role-badge-admin", Icon: Shield },
@@ -33,37 +31,11 @@ function RoleBadge({ role }) {
 }
 
 function Navbar() {
-  const { instance, accounts, inProgress } = useMsal();
+  const auth = useAuth();
+  const profile = auth.user?.profile;
 
-  // Lectura provisoria mientras se resuelve acquireTokenSilent (ver abajo):
-  // tras un F5, la cuenta reconstruida solo desde localStorage puede traer
-  // idTokenClaims incompleto (sin "roles"). Sirve solo como placeholder.
-  const cachedAccount = instance.getActiveAccount() || accounts[0];
-
-  const [account, setAccount] = useState(cachedAccount || null);
-  const [roles, setRoles] = useState(cachedAccount?.idTokenClaims?.roles || []);
-
-  useEffect(() => {
-    if (inProgress !== InteractionStatus.None) return;
-
-    const activeAccount = instance.getActiveAccount() || accounts[0];
-    if (!activeAccount) return;
-
-    instance
-      .acquireTokenSilent({ ...loginRequest, account: activeAccount })
-      .then((result) => {
-        setAccount(result.account);
-        setRoles(result.account?.idTokenClaims?.roles || []);
-      })
-      .catch(() => {
-        // Si la renovación silenciosa falla, seguimos mostrando lo que
-        // había en caché en vez de romper el navbar.
-        setAccount(activeAccount);
-        setRoles(activeAccount.idTokenClaims?.roles || []);
-      });
-  }, [inProgress, instance, accounts]);
-
-  const displayName = account?.name || account?.username;
+  const displayName = profile?.name || profile?.email;
+  const roles = profile?.["cognito:groups"] || [];
   const primaryRole = roles.includes("Admin")
     ? "Admin"
     : roles.includes("Operador")
@@ -72,8 +44,15 @@ function Navbar() {
     ? "Cliente"
     : null;
 
-  const handleLogout = () => {
-    instance.logoutRedirect();
+  // Cognito no implementa el end_session_endpoint estándar de OIDC:
+  // hay que borrar la sesión local y después mandar al navegador al
+  // endpoint /logout del Hosted UI a mano.
+  const handleLogout = async () => {
+    await auth.removeUser();
+    const logoutUrl = new URL(`${cognitoDomain}/logout`);
+    logoutUrl.searchParams.set("client_id", cognitoAuthConfig.client_id);
+    logoutUrl.searchParams.set("logout_uri", cognitoAuthConfig.post_logout_redirect_uri);
+    window.location.href = logoutUrl.toString();
   };
 
   return (
@@ -97,7 +76,7 @@ function Navbar() {
             <div className="navbar2-avatar">{getInitials(displayName)}</div>
             <div className="navbar2-user-info">
               <p className="navbar2-user-name">{displayName || "Cargando..."}</p>
-              <p className="navbar2-user-email">{account?.username}</p>
+              <p className="navbar2-user-email">{profile?.email}</p>
             </div>
             {primaryRole && <RoleBadge role={primaryRole} />}
             <button className="navbar2-logout" onClick={handleLogout} aria-label="Cerrar sesión">

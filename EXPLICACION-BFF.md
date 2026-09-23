@@ -5,6 +5,12 @@ proyecto, y por qué eso es justo lo que pide la evaluación (EP1,
 Indicador 2, 40% de la nota). Está pensado para alguien que no conoce
 el proyecto en detalle.
 
+> Nota: el proyecto migró el login de Azure AD a AWS Cognito. El
+> trabajo del BFF (revisar el token, decidir qué le está permitido a
+> cada rol) es exactamente el mismo de antes — lo que cambia son
+> detalles puntuales de qué se revisa y contra quién, explicados más
+> abajo.
+
 ## ¿Qué problema resuelve?
 
 El frontend (lo que ve la persona en el navegador) **nunca** debería
@@ -18,8 +24,8 @@ Por eso se usa un **BFF** (Backend For Frontend — literalmente,
 que no ve nadie más que nuestra app, y que cumple dos trabajos:
 
 1. **Portero:** revisa que quien pregunta tenga una credencial válida
-   (el token de Azure, explicado en el otro documento) antes de dejarlo
-   pasar.
+   (el token de Cognito, explicado en el otro documento) antes de
+   dejarlo pasar.
 2. **Traductor/intermediario:** una vez que deja pasar a alguien, le va
    a buscar la información real a los otros dos servidores del sistema
    (uno que maneja el catálogo de servicios, otro que maneja las
@@ -38,28 +44,35 @@ Cuando el frontend le pide algo al BFF (por ejemplo, "dame la lista de
 ### 1. Revisa que la credencial (token) sea real
 
 El BFF no confía a ciegas en el token que le mandan. Antes de hacer
-cualquier otra cosa, verifica tres cosas sobre él:
+cualquier otra cosa, verifica cuatro cosas sobre él:
 
-- **Que lo haya emitido Azure** y no cualquier otro sitio (esto se
+- **Que lo haya emitido Cognito** y no cualquier otro sitio (esto se
   llama validar el "issuer", el emisor).
 - **Que sea para esta app específica** y no para otra app distinta que
-  también use Azure (esto se llama validar el "audience", el
-  destinatario).
+  también use el mismo Cognito (esto se llama validar el "client_id",
+  el equivalente al "audience" que se usa con otros proveedores).
+- **Que sea el tipo de token correcto.** Cognito entrega dos tokens
+  distintos por login: uno pensado para que la app sepa quién sos, y
+  otro (el "access token") pensado específicamente para autorizar
+  llamadas a un servidor como este. El BFF exige que sea este segundo
+  tipo — así nadie puede colar el token equivocado.
 - **Que la firma digital sea válida y que no esté vencido.** La firma
   es matemáticamente imposible de falsificar sin la clave privada de
-  Azure — es la misma idea que un timbre notarial: si no coincide, se
+  Cognito — es la misma idea que un timbre notarial: si no coincide, se
   rechaza.
 
-Si cualquiera de estas tres cosas falla (no hay token, el token es de
-mentira, está vencido, o es para otra app), el BFF corta ahí mismo y
-responde con un código **401** ("no sé quién sos" / "no estás
-autenticado"). No llega ni a mirar qué se estaba pidiendo.
+Si cualquiera de estas cosas falla (no hay token, el token es de
+mentira, está vencido, es para otra app, o es el tipo de token
+equivocado), el BFF corta ahí mismo y responde con un código **401**
+("no sé quién sos" / "no estás autenticado"). No llega ni a mirar qué
+se estaba pidiendo.
 
 ### 2. Revisa qué le está permitido hacer a ese rol
 
 Si el token es válido, el BFF mira qué rol tiene esa persona (Admin,
-Operador o Cliente — el mismo dato que ya viene firmado por Azure
-dentro del token) y decide si esa acción específica le está permitida.
+Operador o Cliente — el mismo dato que ya viene firmado por Cognito
+dentro del token, como el grupo al que pertenece) y decide si esa
+acción específica le está permitida.
 
 Por ejemplo: un Cliente puede consultar el catálogo, pero **no** puede
 pedir la lista completa de órdenes filtradas por estado — eso es solo
@@ -88,7 +101,7 @@ cada servidor.
 
 | Lo que pide la pauta | Qué hicimos |
 |---|---|
-| Validar issuer y audience correctamente | El BFF los revisa automáticamente contra los datos reales del tenant de Azure de este proyecto |
+| Validar issuer y audience correctamente | El BFF revisa el issuer automáticamente contra los datos reales de Cognito de este proyecto; como Cognito no usa "audience" de la forma tradicional, se agregó una verificación equivalente (client_id + tipo de token) hecha a medida |
 | Verificar firma y vigencia del token | Mismo mecanismo — si la firma no calza o el token venció, se rechaza |
 | Aplicar autorización por rol donde corresponde | Cada acción del BFF tiene declarado explícitamente qué roles la pueden usar |
 | Responder con códigos de error adecuados (401/403) | 401 cuando no hay credencial válida, 403 cuando la credencial es válida pero el rol no alcanza |

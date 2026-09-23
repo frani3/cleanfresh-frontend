@@ -1,11 +1,10 @@
-import { useIsAuthenticated, useMsal } from "@azure/msal-react";
-import { loginRequest } from "../authConfig";
+import { useAuth } from "react-oidc-context";
 
 function Login() {
-  const { instance } = useMsal();
+  const auth = useAuth();
 
   const handleLogin = () => {
-    instance.loginRedirect(loginRequest);
+    auth.signinRedirect();
   };
 
   return (
@@ -17,7 +16,7 @@ function Login() {
         <h1>Clean&amp;Fresh Manager</h1>
         <p>Por favor inicia sesión para continuar</p>
         <button className="login-btn" onClick={handleLogin}>
-          Iniciar sesión con Microsoft
+          Iniciar sesión
         </button>
         <div className="login-footer">Gestión de lavanderías Clean&amp;Fresh</div>
       </div>
@@ -27,11 +26,18 @@ function Login() {
 
 // Protege el contenido autenticado de la app. No hay React Router (todo
 // vive en una sola página), así que el "guard" no protege rutas: protege
-// qué se renderiza según haya o no una sesión MSAL activa.
+// qué se renderiza según haya o no una sesión de Cognito activa.
 function AuthGuard({ children }) {
-  const isAuthenticated = useIsAuthenticated();
+  const auth = useAuth();
 
-  if (!isAuthenticated) {
+  // Mientras oidc-client-ts procesa el callback de login o restaura la
+  // sesión desde el storage, no mostrar la pantalla de login (evita el
+  // destello de "iniciar sesión" en cada F5 con sesión ya activa).
+  if (auth.isLoading) {
+    return null;
+  }
+
+  if (!auth.isAuthenticated) {
     return <Login />;
   }
 

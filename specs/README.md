@@ -50,6 +50,8 @@ sin importar el tipo.
 | 023 | Fix | Buscador de "Órdenes recientes" (Admin) también busca por N° de orden | ✅ Verificado | [023-fix-buscador-ordenes-admin-por-numero.md](023-fix-buscador-ordenes-admin-por-numero.md) |
 | 024 | Spec | Cliente ve solo sus propios pedidos + puede solicitar servicios | ✅ Verificado | [024-spec-cliente-filtro-y-solicitar.md](024-spec-cliente-filtro-y-solicitar.md) |
 | 025 | Spec | Pedido real: Cliente crea la orden en el backend (POST), visible para Operador/Admin | ✅ Verificado | [025-spec-pedido-real-cliente-post.md](025-spec-pedido-real-cliente-post.md) |
+| 026 | Spec | Migración de MSAL/Azure a AWS Cognito (frontend + BFF) | ✅ Verificado en vivo (ver Fix 027) | [026-spec-migracion-cognito.md](026-spec-migracion-cognito.md) |
+| 027 | Fix | Validar scope en el BFF + fixes en vivo de la migración a Cognito | ✅ Verificado en vivo | [027-fix-validar-scope-y-fixes-cognito-en-vivo.md](027-fix-validar-scope-y-fixes-cognito-en-vivo.md) |
 
 ## Ítems superados (superseded)
 
@@ -72,6 +74,16 @@ La Spec 025 agrega la primera escritura real: `POST /api/orders`
 (Cliente solicita un servicio), para que un pedido creado en una
 sesión sea visible desde otra (Operador/Admin) — el resto del CRUD
 sigue siendo client-side mock, como estaba.
+
+## Migración a Cognito (Spec 026)
+
+El proveedor de identidad cambió de MSAL/Azure a AWS Cognito —
+frontend y BFF migrados juntos. **No probado en vivo** (sin acceso a
+AWS desde este entorno): ver la sección "Pendiente de verificación"
+al final de la Spec 026 para la lista concreta de cosas a confirmar
+contra el User Pool real antes de dar esto por cerrado (nombres de los
+grupos de Cognito, el `username` real del Operador de prueba, y la
+configuración del App Client).
 
 ## Pendiente de verificación visual
 

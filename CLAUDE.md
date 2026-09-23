@@ -11,31 +11,36 @@ Sistema de gestión para una cadena de lavanderías llamada **Clean&Fresh**, des
 | Componente | Tecnología |
 |---|---|
 | Frontend | React (Create React App, **NO Vite**), JavaScript |
-| Autenticación Frontend | MSAL Browser 5 + MSAL React 5 |
+| Autenticación Frontend | `oidc-client-ts` + `react-oidc-context` |
 | BFF | Spring Boot 4.1.1, Java 21, Maven |
 | Microservicios | Spring Boot 4.1.1, Java 21, Maven |
-| IDaaS | Microsoft Entra External ID (tenant CIAM) |
+| IDaaS | AWS Cognito (User Pool) |
 | JDK local | Java 21 en `C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot` |
+
+> **Historial:** el proyecto arrancó con MSAL + Azure Entra External ID
+> (CIAM); se migró a AWS Cognito porque cambió el requisito de la
+> pauta. La lógica de roles/guards/interceptor es equivalente, cambian
+> el proveedor y algunos nombres de claim (ver más abajo).
 
 ---
 
-## Azure — Tenant CleanFreshChain (CIAM/External)
+## AWS Cognito — User Pool
 
 | Dato | Valor |
 |---|---|
-| Tenant ID | `ced0d159-4118-41be-b6a5-16f7a9a9298b` |
-| Dominio | `CleanFreshChain.onmicrosoft.com` |
-| Authority | `https://CleanFreshChain.ciamlogin.com/ced0d159-4118-41be-b6a5-16f7a9a9298b/v2.0` |
-| App Registration Frontend | `cleanfresh-frontend` — Client ID: `4823b4a7-6749-4cd0-b83c-aa8b4db59d50` |
-| App Registration API | `cleanfresh-api` — Client ID: `7d0eff7d-9e49-4e31-b76f-a8cb746ad2a9` |
+| Authority (issuer) | `https://cognito-idp.us-east-1.amazonaws.com/us-east-1_yi2mx8XVs` |
+| Client ID | `5ct1362lebamr1fpmotcofinl6` |
+| Dominio (Hosted UI) | `https://us-east-1yi2mx8xvs.auth.us-east-1.amazoncognito.com` |
+| Redirect URI | `http://localhost:3000/redirect.html` |
+| Logout URI | `http://localhost:3000` |
+| Scope | `openid email profile https://api.cleanfresh.com/access_as_user` |
 
 ### Usuarios de prueba
 
-| Usuario | Email | Rol asignado |
-|---|---|---|
-| Admin | `Admin@CleanFreshChain.onmicrosoft.com` | Admin |
-| Operador | `Operador@CleanFreshChain.onmicrosoft.com` | Operador |
-| Cliente | `Cliente@CleanFreshChain.onmicrosoft.com` | Cliente |
+Uno por rol (Admin, Operador, Cliente), como grupos del User Pool
+(`cognito:groups`) — mismos nombres de rol que antes. Las credenciales
+puntuales no quedaron documentadas acá; confirmarlas contra el User
+Pool de Cognito si hace falta recrearlas.
 
 ---
 
@@ -65,50 +70,58 @@ Sistema de gestión para una cadena de lavanderías llamada **Clean&Fresh**, des
 
 ### Frontend (`.env` en raíz del proyecto)
 ```
-REACT_APP_CLIENT_ID=4823b4a7-6749-4cd0-b83c-aa8b4db59d50
-REACT_APP_TENANT_ID=ced0d159-4118-41be-b6a5-16f7a9a9298b
-REACT_APP_API_CLIENT_ID=7d0eff7d-9e49-4e31-b76f-a8cb746ad2a9
+REACT_APP_COGNITO_AUTHORITY=https://cognito-idp.us-east-1.amazonaws.com/us-east-1_yi2mx8XVs
+REACT_APP_COGNITO_CLIENT_ID=5ct1362lebamr1fpmotcofinl6
+REACT_APP_COGNITO_DOMAIN=https://us-east-1yi2mx8xvs.auth.us-east-1.amazoncognito.com
+REACT_APP_API_SCOPE=https://api.cleanfresh.com/access_as_user
 ```
 
-### BFF (`.env` en raíz del proyecto)
+### BFF (variables de entorno del proceso, no `.env`)
 ```
-AZURE_TENANT_ID=ced0d159-4118-41be-b6a5-16f7a9a9298b
-AZURE_API_CLIENT_ID=7d0eff7d-9e49-4e31-b76f-a8cb746ad2a9
-AZURE_FRONTEND_CLIENT_ID=4823b4a7-6749-4cd0-b83c-aa8b4db59d50
+COGNITO_ISSUER_URI=https://cognito-idp.us-east-1.amazonaws.com/us-east-1_yi2mx8XVs
+COGNITO_CLIENT_ID=5ct1362lebamr1fpmotcofinl6
 ```
 
 ---
 
-## Configuración MSAL Frontend (`src/authConfig.js`)
+## Configuración Frontend (`src/authConfig.js`)
 
 ```javascript
-export const msalConfig = {
-    auth: {
-        clientId: process.env.REACT_APP_CLIENT_ID,
-        authority: `https://CleanFreshChain.ciamlogin.com/${process.env.REACT_APP_TENANT_ID}/v2.0`,
-        knownAuthorities: [`CleanFreshChain.ciamlogin.com`],
-        redirectUri: `${window.location.origin}/redirect.html`,
-        postLogoutRedirectUri: window.location.origin,
-    },
-    cache: {
-        cacheLocation: "localStorage",
-        storeAuthStateInCookie: false,
-    }
+import { UserManager } from "oidc-client-ts";
+
+export const cognitoAuthConfig = {
+  authority: process.env.REACT_APP_COGNITO_AUTHORITY,
+  client_id: process.env.REACT_APP_COGNITO_CLIENT_ID,
+  redirect_uri: `${window.location.origin}/redirect.html`,
+  response_type: "code",
+  scope: `openid email profile ${process.env.REACT_APP_API_SCOPE}`,
+  post_logout_redirect_uri: window.location.origin,
+  loadUserInfo: true,
 };
 
-export const loginRequest = {
-    scopes: ["openid", "profile", "User.Read"]
-};
+export const cognitoDomain = process.env.REACT_APP_COGNITO_DOMAIN;
 
-export const protectedResources = {
-    bffApi: {
-        endpoint: "http://localhost:8080/api",
-        scopes: ["User.Read"],
-    },
-};
+// Compartida entre el AuthProvider (index.js) y apiService.js (que no
+// es un componente y no puede usar el hook useAuth()).
+export const userManager = new UserManager(cognitoAuthConfig);
 ```
 
-> **IMPORTANTE:** El BFF recibe el **idToken** (no el accessToken) porque el tenant CIAM no soporta scopes de API personalizados. El `apiService.js` usa `result.idToken` en lugar de `result.accessToken`.
+> **IMPORTANTE:** el BFF recibe el **access_token** (no el idToken) —
+> al revés que con Azure CIAM. Acá sí hay un scope de API custom
+> (`https://api.cleanfresh.com/access_as_user`), así que el access
+> token es el que corresponde para autorizar llamadas al BFF.
+> `apiService.js` usa `user.access_token`.
+>
+> **Ojo con los claims:** el access token de Cognito **no** trae
+> `name`/`email`/`preferred_username` (esos son del idToken) — el
+> único identificador de la persona ahí es `username`. El BFF lo usa en
+> vez de `preferred_username` (ver `OrderService.java`).
+
+`public/redirect.html` está registrado en Cognito como callback URL de
+la app. En vez de duplicar la lógica de `oidc-client-ts` en HTML
+estático suelto, ese archivo solo rebota a `/` conservando
+`?code=&state=`, y ahí el `AuthProvider` (montado en la app real)
+procesa el login normalmente.
 
 ---
 
@@ -125,8 +138,10 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: https://ced0d159-4118-41be-b6a5-16f7a9a9298b.ciamlogin.com/ced0d159-4118-41be-b6a5-16f7a9a9298b/v2.0
-          audiences: ${AZURE_FRONTEND_CLIENT_ID}
+          # Los access tokens de Cognito no traen claim "aud" (a diferencia
+          # de Azure) — no se usa "audiences" acá, esa validación la hace
+          # CognitoTokenValidator contra "client_id" (ver SecurityConfig).
+          issuer-uri: ${COGNITO_ISSUER_URI}
 
 management:
   endpoints:
@@ -137,9 +152,8 @@ management:
     health:
       show-details: never
 
-azure:
-  tenant-id: ${AZURE_TENANT_ID}
-  client-id: ${AZURE_API_CLIENT_ID}
+cognito:
+  client-id: ${COGNITO_CLIENT_ID}
 
 microservices:
   orders:
@@ -173,9 +187,10 @@ src/main/java/com/cleanfresh/ms_cleanfresh_bff/
 
 ### Roles y autorización en el BFF
 
-- Los roles vienen en el claim `roles` del JWT con prefijo `ROLE_`
-- `SecurityConfig` extrae roles con `JwtGrantedAuthoritiesConverter` usando `setAuthoritiesClaimName("roles")`
+- Los roles vienen en el claim `cognito:groups` del JWT (grupos del User Pool), con prefijo `ROLE_`
+- `SecurityConfig` extrae roles con `JwtGrantedAuthoritiesConverter` usando `setAuthoritiesClaimName("cognito:groups")`
 - Los controllers usan `@PreAuthorize("hasAnyRole('Admin','Operador','Cliente')")` según corresponda
+- `CognitoTokenValidator` (en `config/`) reemplaza la validación de `audiences` de Azure: chequea `token_use == "access"` y `client_id` contra el de esta app, sobre el `JwtDecoder` custom que registra `SecurityConfig`
 
 ---
 
@@ -183,16 +198,17 @@ src/main/java/com/cleanfresh/ms_cleanfresh_bff/
 
 ```
 src/
-├── authConfig.js                  # Configuración MSAL
-├── index.js                       # MsalProvider wrapping App
-├── App.jsx                        # Login vs BentoDashboard según isAuthenticated
+├── authConfig.js                  # Configuración Cognito + UserManager compartido
+├── index.js                       # AuthProvider (react-oidc-context) wrapping App
+├── App.jsx                        # AuthGuard -> Navbar + BentoDashboard
 ├── App.css                        # Estilos globales + bento grid
 ├── components/
-│   └── Navbar.jsx                 # Logo, nombre usuario, rol, botón logout
+│   ├── AuthGuard.jsx               # Pantalla de login / protección de la app
+│   └── Navbar.jsx                  # Logo, nombre usuario, rol, botón logout
 ├── pages/
 │   └── BentoDashboard.jsx         # Dashboard bento único con tarjetas por rol
 └── services/
-    └── apiService.js              # Llamadas al BFF con idToken como Bearer
+    └── apiService.js              # Llamadas al BFF con access_token como Bearer
 ```
 
 ### Diseño actual
@@ -205,32 +221,18 @@ El frontend usa un **diseño bento grid** en una sola página. No hay React Rout
 | Operador | KPIs operacionales, Órdenes, Catálogo |
 | Cliente | Mis órdenes, Catálogo con botón solicitar, Puntos de fidelidad |
 
-### Lectura de roles (patrón correcto con tenant CIAM)
+### Lectura de roles
 
-`getActiveAccount()`/`accounts[0]` reconstruyen la cuenta leyendo el
-caché de `localStorage` **sin volver a validar el token** — tras un F5
-esto puede devolver `idTokenClaims` incompleto (sin `roles`), aunque
-justo después del login sí venga completo. Por eso no alcanza con
-esperar `inProgress === InteractionStatus.None`: hay que forzar
-`acquireTokenSilent` para obtener una cuenta con los claims reales.
+Con `react-oidc-context`, `auth.user` ya refleja el resultado completo
+del login/silent renew procesado por `oidc-client-ts` — no hace falta
+el workaround que sí necesitaba MSAL (forzar `acquireTokenSilent` tras
+cada F5 porque la cuenta cacheada podía traer claims incompletos). Se
+lee directo:
 
 ```javascript
-const { instance, accounts, inProgress } = useMsal();
-
-useEffect(() => {
-  if (inProgress !== InteractionStatus.None) return;
-  const activeAccount = instance.getActiveAccount() || accounts[0];
-  if (!activeAccount) return;
-
-  instance
-    .acquireTokenSilent({ ...loginRequest, account: activeAccount })
-    .then((result) => setRoles(result.account?.idTokenClaims?.roles || []))
-    .catch((error) => {
-      if (error instanceof InteractionRequiredAuthError) {
-        instance.acquireTokenRedirect({ ...loginRequest, account: activeAccount });
-      }
-    });
-}, [inProgress, instance, accounts]);
+const auth = useAuth();
+const roles = auth.user?.profile?.["cognito:groups"] || [];
+const isAdmin = roles.includes("Admin");
 ```
 
 ---
@@ -266,9 +268,8 @@ java -jar target/ms-cleanfresh-catalog-0.0.1-SNAPSHOT.jar
 
 # Terminal 3 — BFF (puerto 8080)
 cd C:\Users\franc\ms-cleanfresh-bff
-$env:AZURE_TENANT_ID="ced0d159-4118-41be-b6a5-16f7a9a9298b"
-$env:AZURE_API_CLIENT_ID="7d0eff7d-9e49-4e31-b76f-a8cb746ad2a9"
-$env:AZURE_FRONTEND_CLIENT_ID="4823b4a7-6749-4cd0-b83c-aa8b4db59d50"
+$env:COGNITO_ISSUER_URI="https://cognito-idp.us-east-1.amazonaws.com/us-east-1_yi2mx8XVs"
+$env:COGNITO_CLIENT_ID="5ct1362lebamr1fpmotcofinl6"
 java -jar target/ms-cleanfresh-bff-0.0.1-SNAPSHOT.jar
 
 # Terminal 4 — Frontend (puerto 3000)
@@ -282,6 +283,12 @@ npm start
 ---
 
 ## Requisitos EP1 — Pauta de Evaluación
+
+> Los títulos de los indicadores ("MSAL"/"BFF") quedaron como los dio
+> el profesor originalmente; el mecanismo de auth detrás cambió de
+> MSAL/Azure a `react-oidc-context`/Cognito, pero lo que evalúa cada
+> punto (login real con IDaaS, roles desde el token, JWT validado en
+> el BFF) es lo mismo.
 
 ### Indicador 1 — MSAL (60%)
 
@@ -319,37 +326,39 @@ Para nota máxima se requiere:
 ```
 Frontend React (localhost:3000)
         |
-        | idToken (Bearer)
+        | access_token (Bearer)
         v
 BFF Spring Boot (localhost:8080)
         |
-        |-- valida JWT contra Azure CIAM
-        |-- extrae rol del claim "roles"
+        |-- valida JWT contra el User Pool de Cognito
+        |-- extrae rol del claim "cognito:groups"
+        |-- valida token_use=access y client_id (CognitoTokenValidator)
         |-- aplica @PreAuthorize por rol
         |
         |-- RestClient --> ms-cleanfresh-orders (localhost:8081)
         |-- RestClient --> ms-cleanfresh-catalog (localhost:8082)
         |
-Azure Entra External ID (CIAM)
+AWS Cognito (User Pool, Hosted UI)
         |
-        |-- emite idToken con claim "roles"
-        |-- issuer: https://ced0d159...ciamlogin.com/.../v2.0
-        |-- audience: Client ID del frontend
+        |-- emite access_token con claims "cognito:groups", "client_id", "token_use", "username"
+        |-- issuer: https://cognito-idp.us-east-1.amazonaws.com/us-east-1_yi2mx8XVs
 ```
 
 ---
 
 ## Decisiones técnicas importantes
 
-1. **Tenant CIAM vs Workforce:** Se usa tenant External (CIAM) porque el tenant de DuocUC no da acceso a los estudiantes. Esto implica que el BFF valida el **idToken** en lugar del accessToken, porque el tenant CIAM no emite accessTokens con scopes de API personalizados.
+1. **access_token como Bearer:** a diferencia de Azure CIAM (que no soportaba scopes de API custom, por eso se usaba el idToken), acá sí hay un scope propio (`https://api.cleanfresh.com/access_as_user`), así que el BFF valida el **access_token**. `apiService.js` usa `user.access_token` en vez de `result.idToken`.
 
-2. **idToken como Bearer:** El `apiService.js` usa `result.idToken` en lugar de `result.accessToken`. El BFF valida con el audience del Client ID del frontend (`4823b4a7...`).
+2. **Sin claim `aud` en el access token:** Cognito no lo incluye (a diferencia de Azure). El BFF reemplaza esa validación con `CognitoTokenValidator`, que chequea `token_use == "access"` y `client_id` contra el de esta app.
 
-3. **Roles en el token:** Los roles llegan en el claim `roles` del idToken. El BFF los extrae con `JwtGrantedAuthoritiesConverter` y los prefija con `ROLE_` (ej: `ROLE_Admin`).
+3. **Roles en el token:** los roles llegan como grupos del User Pool, en el claim `cognito:groups`. El BFF los extrae con `JwtGrantedAuthoritiesConverter` y los prefija con `ROLE_` (ej: `ROLE_Admin`).
 
-4. **cacheLocation localStorage:** Se usa `localStorage` en lugar de `sessionStorage` para que la sesión persista al hacer F5. Al recargar, no alcanza con esperar `inProgress === InteractionStatus.None`: hay que forzar `acquireTokenSilent` antes de leer los roles (ver sección "Lectura de roles" más abajo) porque la cuenta reconstruida solo desde caché puede traer `idTokenClaims` incompleto.
+4. **Identidad limitada en el access token:** el access token no trae `name`/`email`/`preferred_username` (son del idToken) — solo `username`. El BFF usa ese claim donde antes usaba `preferred_username` (mapeo operador→sucursal, autor de un pedido nuevo).
 
-5. **Diseño bento grid:** Se eliminó el sidebar y React Router. Toda la interfaz está en un solo `BentoDashboard.jsx` con tarjetas bento según rol.
+5. **`onSigninCallback` en vez de manejo manual de cuenta activa:** `oidc-client-ts` no tiene el problema de caché que tenía MSAL (cuenta reconstruida con claims incompletos tras F5) — no hace falta el workaround de forzar `acquireTokenSilent` que sí era necesario antes.
+
+6. **Diseño bento grid:** Se eliminó el sidebar y React Router. Toda la interfaz está en un solo `BentoDashboard.jsx` con tarjetas bento según rol.
 
 ---
 
@@ -367,7 +376,9 @@ el panel Admin, para no duplicar algo ya resuelto ahí.
 ## Pendientes
 
 - [ ] Conectar microservicios a **base de datos cloud** (Oracle o PostgreSQL) con entidades JPA y repositorios Spring Data
-- [ ] Conectar páginas Orders y Catalog del frontend al BFF (actualmente usan datos mock)
-- [x] Corregir que al hacer F5 con rol Admin/Operador no muestre vista de Cliente — resuelto forzando `acquireTokenSilent` al terminar de restaurar la sesión MSAL, en vez de confiar en la lectura síncrona de `getActiveAccount()`
+- [x] Migración a Cognito probada en vivo (Fix 027) — login, interceptor y creación de pedidos por Cliente confirmados funcionando; se corrigieron 3 problemas reales en el proceso (typo de `.env`, jar del BFF desactualizado, mismatch `username`/email en "Tus pedidos") y se agregó validación de `scope` en `CognitoTokenValidator`
+- [ ] El mapa `SUCURSAL_POR_OPERADOR` en `OrderService.java` (BFF) sigue con el valor viejo de Azure (`operador@cleanfreshchain.onmicrosoft.com`) — con Cognito debería usar el `username` real del Operador de prueba (un valor tipo UUID, no un email); no confirmado en vivo con esa cuenta todavía
+- [ ] Confirmar que los grupos de Cognito se llaman exactamente `Admin`/`Operador`/`Cliente` con las cuentas de Admin y Operador (solo se confirmó con Cliente)
+- [x] Corregir que al hacer F5 con rol Admin/Operador no muestre vista de Cliente — ya no aplica el workaround original de MSAL; `react-oidc-context` no tiene ese problema de caché
 - [x] Mejorar diseño bento: ajustar overflow de tabla de órdenes, max-height del JSON del BFF — resuelto (`overflow-x: auto` + columnas compactas en la tabla, `max-height: 300px` en el bloque de estado del BFF)
 - [ ] Ver `specs/README.md` → "Pendiente de verificación visual" para los ítems de responsive que faltan probar en navegador

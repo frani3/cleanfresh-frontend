@@ -1,57 +1,27 @@
 import axios from "axios";
-import { InteractionRequiredAuthError } from "@azure/msal-browser";
-import { protectedResources } from "../authConfig";
+import { userManager, bffApiUrl } from "../authConfig";
 
 const apiClient = axios.create({
-  baseURL: protectedResources.bffApi.endpoint,
+  baseURL: bffApiUrl,
 });
 
-let msalInstance = null;
-
-// Se llama una sola vez desde index.js, justo después de crear el
-// PublicClientApplication. A partir de acá, el interceptor de abajo
-// resuelve la cuenta activa solo — los componentes que llaman a las
-// funciones de este archivo no necesitan pasar instance/account.
-export function configureApiAuth(instance) {
-  msalInstance = instance;
-}
-
+// A diferencia de MSAL (donde se necesitaba idToken porque el tenant
+// CIAM no soportaba scopes de API custom), con Cognito sí hay un scope
+// de API propio (ver REACT_APP_API_SCOPE) — por eso acá se manda el
+// access_token, no el idToken.
 apiClient.interceptors.request.use(async (config) => {
-  if (!msalInstance) {
-    throw new Error(
-      "apiService: configureApiAuth() no fue llamado todavía (falta inicializar MSAL)."
-    );
+  let user = await userManager.getUser();
+
+  if (!user || user.expired) {
+    user = await userManager.signinSilent().catch(() => null);
   }
 
-  // getActiveAccount() puede devolver null en una condición de carrera
-  // (setActiveAccount() todavía no terminó su flujo async en index.js),
-  // aunque ya haya una sesión iniciada — mismo patrón que Navbar.jsx y
-  // BentoDashboard.jsx.
-  const account = msalInstance.getActiveAccount() || msalInstance.getAllAccounts()[0];
-  if (!account) {
-    throw new Error("apiService: no hay una cuenta activa para autenticar la petición.");
-  }
-
-  const request = {
-    scopes: protectedResources.bffApi.scopes,
-    account,
-  };
-
-  let token;
-  try {
-    const result = await msalInstance.acquireTokenSilent(request);
-    token = result.idToken;
-  } catch (error) {
-    if (error instanceof InteractionRequiredAuthError) {
-      const result = await msalInstance.acquireTokenPopup(request);
-      token = result.idToken;
-    } else {
-      throw error;
-    }
+  if (!user) {
+    throw new Error("apiService: no hay una sesión activa para autenticar la petición.");
   }
 
   config.headers = config.headers || {};
-  config.headers.Authorization = `Bearer ${token}`;
+  config.headers.Authorization = `Bearer ${user.access_token}`;
   return config;
 });
 

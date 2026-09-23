@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useMsal, useIsAuthenticated } from "@azure/msal-react";
-import { InteractionStatus, InteractionRequiredAuthError } from "@azure/msal-browser";
+import { useAuth } from "react-oidc-context";
 import {
   Activity,
   DollarSign,
@@ -31,7 +30,6 @@ import {
   X,
   RefreshCw,
 } from "lucide-react";
-import { loginRequest } from "../authConfig";
 import { getHealth, getCatalog, getOrders, createOrder } from "../services/apiService";
 
 /* =========================================================
@@ -909,7 +907,6 @@ function AdminView({
   onAddService,
   onUpdateService,
   onToggleServiceBranch,
-  onToggleServiceAvailability,
   onDeleteService,
   onAddOrder,
   onUpdateOrder,
@@ -1216,18 +1213,6 @@ function AdminView({
                         {enabledHere ? <Ban size={12} /> : <RotateCcw size={12} />}
                       </button>
                       <button
-                        className={`btn2 ${availableAnywhere ? "btn2-outline btn2-danger" : "btn2-outline"}`}
-                        onClick={() => onToggleServiceAvailability(s.id)}
-                        aria-label={
-                          availableAnywhere
-                            ? `Marcar ${s.name} como no disponible en todas las sucursales`
-                            : `Reactivar ${s.name} en todas las sucursales`
-                        }
-                        title={availableAnywhere ? "Marcar no disponible" : "Reactivar en todas partes"}
-                      >
-                        {availableAnywhere ? "No disponible" : "Reactivar"}
-                      </button>
-                      <button
                         className="btn2 btn2-outline btn2-danger"
                         onClick={() => setDeleteServiceTarget(s)}
                         aria-label={`Eliminar ${s.name}`}
@@ -1486,17 +1471,20 @@ function OperadorView({
    Vista Cliente
    ========================================================= */
 
-function ClienteView({ services, orders, actor, onRequestOrder }) {
+function ClienteView({ services, orders, cognitoUsername, onRequestOrder }) {
   const progress = Math.min(100, (POINTS / POINTS_GOAL) * 100);
   const [viewOrder, setViewOrder] = useState(null);
   const [requestingService, setRequestingService] = useState(null);
 
-  // No existe en el backend un vínculo real entre la cuenta Azure y el
-  // pedido (Spec 020 nota de alcance); se usa el nombre/email de la
-  // sesión como comparación exacta (case-insensitive) contra `cliente`,
-  // que es lo que también se guarda al crear un pedido acá mismo.
-  const normalizedActor = actor.trim().toLowerCase();
-  const myOrders = orders.filter((o) => o.customer.trim().toLowerCase() === normalizedActor);
+  // No existe en el backend un vínculo real entre la cuenta y el pedido
+  // más allá del "username" de Cognito (Spec 020 nota de alcance): el
+  // BFF guarda ese mismo valor como `cliente` al crear un pedido (Fix:
+  // el access token no trae name/email, solo username), así que acá se
+  // compara contra eso, no contra el nombre/email de la sesión.
+  const normalizedUsername = cognitoUsername.trim().toLowerCase();
+  const myOrders = orders.filter(
+    (o) => o.customer.trim().toLowerCase() === normalizedUsername
+  );
 
   return (
     <div className="bento2-grid role-cliente">
@@ -1586,49 +1574,16 @@ function ClienteView({ services, orders, actor, onRequestOrder }) {
    ========================================================= */
 
 function BentoDashboard() {
-  const { instance, accounts, inProgress } = useMsal();
-  const isAuthenticated = useIsAuthenticated();
+  const auth = useAuth();
 
-  // Al recargar (F5), MSAL restaura la sesión desde localStorage de forma
-  // asíncrona y getActiveAccount()/accounts[0] pueden traer idTokenClaims
-  // incompleto (sin "roles") porque reconstruyen la cuenta desde caché sin
-  // volver a validar el token. acquireTokenSilent() fuerza esa validación y
-  // devuelve una cuenta con los claims reales y completos.
-  const [rolesLoaded, setRolesLoaded] = useState(false);
-  const [account, setAccount] = useState(null);
-  const [roles, setRoles] = useState([]);
-
-  useEffect(() => {
-    if (inProgress !== InteractionStatus.None || !isAuthenticated) return;
-
-    const activeAccount = instance.getActiveAccount() || accounts[0];
-    if (!activeAccount) return;
-
-    let cancelled = false;
-
-    instance
-      .acquireTokenSilent({ ...loginRequest, account: activeAccount })
-      .then((result) => {
-        if (cancelled) return;
-        setAccount(result.account);
-        setRoles(result.account?.idTokenClaims?.roles || []);
-        setRolesLoaded(true);
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        if (error instanceof InteractionRequiredAuthError) {
-          instance.acquireTokenRedirect({ ...loginRequest, account: activeAccount });
-          return;
-        }
-        setAccount(activeAccount);
-        setRoles(activeAccount.idTokenClaims?.roles || []);
-        setRolesLoaded(true);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [inProgress, isAuthenticated, instance, accounts]);
+  // A diferencia de MSAL (que podía traer idTokenClaims incompleto tras
+  // un F5 y necesitaba forzar acquireTokenSilent para refrescarlos),
+  // auth.user de react-oidc-context ya refleja el resultado completo del
+  // login/silent renew procesado por oidc-client-ts — se puede leer
+  // directo, sin el workaround.
+  const account = auth.user;
+  const rolesLoaded = !auth.isLoading;
+  const roles = account?.profile?.["cognito:groups"] || [];
 
   const isAdmin = roles.includes("Admin");
   const isOperador = roles.includes("Operador");
@@ -1645,7 +1600,15 @@ function BentoDashboard() {
 
   // Nombre/email de quien está en esta sesión — se usa como "actor" en el
   // historial de cambios de estado de una orden (Spec 020).
-  const actor = account?.name || account?.username || "Desconocido";
+  const actor = account?.profile?.name || account?.profile?.email || "Desconocido";
+
+  // Fix: el access token de Cognito no trae name/email (ver
+  // authConfig.js), así que el BFF guarda el "cliente" de un pedido
+  // nuevo usando el claim "username" del access token (un identificador
+  // tipo UUID, no el email). Para que "Tus pedidos" (Cliente) encuentre
+  // sus propios pedidos hay que comparar contra ese mismo valor, no
+  // contra el nombre/email — por eso va aparte de "actor".
+  const cognitoUsername = account?.profile?.["cognito:username"] || "";
 
   // Sucursal "en turno" del Operador (Spec 019): arranca en la primera
   // de la lista; cambiarla dispara un pedido nuevo al BFF, no filtra
@@ -1667,7 +1630,7 @@ function BentoDashboard() {
         setLatencyMs(Math.round(performance.now() - startedAt));
         setHealthError(error?.response?.data?.message || error.message || "Error desconocido");
       });
-  }, [instance, account, isAdmin, rolesLoaded]);
+  }, [account, isAdmin, rolesLoaded]);
 
   // Catálogo real (GET /api/catalog) — todas las vistas lo necesitan.
   useEffect(() => {
@@ -1745,23 +1708,6 @@ function BentoDashboard() {
 
   const deleteService = (id) => {
     setServices((prev) => prev.filter((s) => s.id !== id));
-  };
-
-  // Toggle rápido "servicio completo": si está disponible en alguna
-  // sucursal lo desactiva en todas; si no está disponible en ninguna,
-  // lo reactiva en todas. Complementa el toggle por sucursal individual.
-  const toggleServiceAvailability = (id) => {
-    setServices((prev) =>
-      prev.map((s) => {
-        if (s.id !== id) return s;
-        const makeAvailable = !isServiceAvailableAnywhere(s);
-        const branches = Object.keys(s.branches).reduce(
-          (acc, b) => ({ ...acc, [b]: makeAvailable }),
-          {}
-        );
-        return { ...s, branches };
-      })
-    );
   };
 
   const addOrder = (data) => {
@@ -1844,7 +1790,6 @@ function BentoDashboard() {
           onAddService={addService}
           onUpdateService={updateService}
           onToggleServiceBranch={toggleServiceBranch}
-          onToggleServiceAvailability={toggleServiceAvailability}
           onDeleteService={deleteService}
           onAddOrder={addOrder}
           onUpdateOrder={updateOrder}
@@ -1864,7 +1809,12 @@ function BentoDashboard() {
         />
       )}
       {roleVariant === "cliente" && (
-        <ClienteView services={services} orders={orders} actor={actor} onRequestOrder={requestOrder} />
+        <ClienteView
+          services={services}
+          orders={orders}
+          cognitoUsername={cognitoUsername}
+          onRequestOrder={requestOrder}
+        />
       )}
     </main>
   );

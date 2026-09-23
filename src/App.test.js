@@ -1,19 +1,15 @@
 import { render, screen } from "@testing-library/react";
-import { PublicClientApplication } from "@azure/msal-browser";
-import { MsalProvider } from "@azure/msal-react";
+import { AuthProvider } from "react-oidc-context";
 import App from "./App";
-import { msalConfig } from "./authConfig";
+import { userManager } from "./authConfig";
 
 test("muestra la pantalla de inicio de sesión cuando no hay sesión activa", async () => {
-  const msalInstance = new PublicClientApplication(msalConfig);
-  await msalInstance.initialize();
-
   render(
-    <MsalProvider instance={msalInstance}>
+    <AuthProvider userManager={userManager}>
       <App />
-    </MsalProvider>
+    </AuthProvider>
   );
 
-  const loginButton = await screen.findByText(/iniciar sesión con microsoft/i);
+  const loginButton = await screen.findByText(/iniciar sesión/i);
   expect(loginButton).toBeInTheDocument();
 });

@@ -2,16 +2,18 @@
 <html>
 <body>
   <!--
-    CRA sirve public/ como archivos estáticos (no pasa por Webpack), por lo
-    que un <script type="module"> con el bare specifier
-    "@azure/msal-browser/redirect-bridge" no se puede resolver en el
-    navegador. Usamos en su lugar el bundle UMD vendorizado por
-    scripts/copy-redirect-bridge.js (ver package.json "postinstall"), que
-    expone la misma función broadcastResponseToMainFrame() como global.
+    Cognito tiene registrado /redirect.html como callback URL de la app
+    (cambiarlo implicaría reconfigurar el App Client en AWS). Pero esta
+    ruta es un archivo estático que CRA sirve fuera del bundle de React,
+    así que acá no hay AuthProvider montado para procesar el login.
+
+    En vez de duplicar la lógica de oidc-client-ts en HTML plano,
+    rebotamos a "/" conservando el ?code=&state= — ahí sí está montada
+    la app real (con el AuthProvider) y react-oidc-context procesa el
+    callback normalmente.
   -->
-  <script src="/msal-redirect-bridge.min.js"></script>
   <script>
-    msalRedirectBridge.broadcastResponseToMainFrame().catch(console.error);
+    window.location.replace("/" + window.location.search);
   </script>
 </body>
 </html>
