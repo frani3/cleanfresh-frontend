@@ -1,0 +1,45 @@
+# EC2 #2 (EP2): los 5 microservicios. El BFF corre aparte en la EC2 #1.
+# Se espera que los repos estén clonados lado a lado (../../../ms-cleanfresh-*).
+# Variables en el archivo .env junto a este (ver .env.example); no se sube a git.
+services:
+  orders:
+    build: ../../../ms-cleanfresh-orders
+    ports: ["8081:8081"]
+    restart: unless-stopped
+    environment:
+      DB_URL: ${ORDERS_DB_URL}
+      DB_USER: ${ORDERS_DB_USER}
+      DB_PASSWORD: ${ORDERS_DB_PASSWORD}
+      SQS_ENABLED: ${SQS_ENABLED:-false}
+      SQS_QUEUE_URL: ${SQS_QUEUE_URL:-}
+      SQS_ENDPOINT: ${SQS_ENDPOINT:-}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+
+  catalog:
+    build: ../../../ms-cleanfresh-catalog
+    ports: ["8082:8082"]
+    restart: unless-stopped
+    environment:
+      DB_URL: ${CATALOG_DB_URL}
+      DB_USER: ${CATALOG_DB_USER}
+      DB_PASSWORD: ${CATALOG_DB_PASSWORD}
+
+  notificaciones:
+    build: ../../../ms-cleanfresh-notificaciones
+    ports: ["8083:8083"]
+    restart: unless-stopped
+    environment:
+      SQS_ENABLED: ${SQS_ENABLED:-false}
+      SQS_QUEUE_URL: ${SQS_QUEUE_URL:-}
+      SQS_ENDPOINT: ${SQS_ENDPOINT:-}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+
+  reportes:
+    build: ../../../ms-cleanfresh-reportes
+    ports: ["8084:8084"]
+    restart: unless-stopped
+
+  auditoria:
+    build: ../../../ms-cleanfresh-auditoria
+    ports: ["8085:8085"]
+    restart: unless-stopped

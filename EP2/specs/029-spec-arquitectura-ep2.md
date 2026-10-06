@@ -155,4 +155,18 @@ porque no hay cola de mensajes fallidos (DLQ). Al matar el consumidor en pleno
 long polling, su mensaje queda "no visible" hasta que vence el tiempo de
 visibilidad (30 s) y vuelve a la cola; es comportamiento normal de SQS.
 
-**Fases 4–6:** ACs 13–20, ⏳ pendientes.
+**Fase 4 — contenedores (hecha, solo local con Docker Desktop).** `Dockerfile`
+multi-etapa (Maven + JDK 21 → JRE 21, usuario sin root) y `.dockerignore` en los
+6 repos; `docker-compose.yml` en [`EP2/despliegue/`](../despliegue/README.md).
+Probado contra el Postgres local, no contra RDS ni en una EC2.
+
+| # | AC | Estado |
+|---|---|---|
+| 13 | Las 6 imágenes se construyen (`cleanfresh/<servicio>`, 504–587 MB). Los 5 microservicios arrancaron solo con variables de entorno: `orders` y `catalog` respondieron 200 con los datos de sus bases (`host.docker.internal`), `reportes` y `auditoría` 200, `notificaciones` arrancó. El proceso corre como `appuser` (no root). La imagen del BFF arranca, lee sus variables y falla solo al resolver el emisor de Cognito (el User Pool de EP1 ya no existe) | ✅ Cumple (local); BFF completo pendiente de Cognito (fase 5) |
+| 14 | `docker compose up -d --build` levantó los 5 con 8081–8085 mapeados; los 5 contenedores tienen `RestartPolicy=unless-stopped`; tras `docker compose restart orders` siguen las mismas 11 órdenes | ✅ Cumple (local). Que vuelvan tras reiniciar la EC2 requiere además `systemctl enable docker` (documentado) y se prueba en la fase 5 |
+| 15 | `Dockerfile` del BFF listo y la imagen construye y arranca; correrla en la EC2 #1 (:8080) | ⏳ Pendiente de la fase 5 |
+
+Límite conocido: SQS dentro de Docker no se probó (en la fase 3 se probó con los
+jars); se comprobará contra la cola real en la fase 5.
+
+**Fases 5–6:** ACs 16–20, ⏳ pendientes.
