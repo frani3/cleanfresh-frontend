@@ -288,12 +288,20 @@ const isAdmin = roles.includes("Admin");
 $env:JAVA_HOME = "C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot"
 $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
 
+# (EP2) orders y catalog necesitan una base PostgreSQL: sin DB_URL/DB_USER/
+# DB_PASSWORD no arrancan. Ver el README de cada repo para levantar una
+# con Docker (orders_db / catalog_db, un usuario por servicio).
+
 # Terminal 1 — ms-cleanfresh-orders (puerto 8081)
 cd C:\Users\franc\ms-cleanfresh-orders
+$env:DB_URL="jdbc:postgresql://localhost:5432/orders_db"
+$env:DB_USER="orders_user"; $env:DB_PASSWORD="<clave>"
 java -jar target/ms-cleanfresh-orders-0.0.1-SNAPSHOT.jar
 
 # Terminal 2 — ms-cleanfresh-catalog (puerto 8082)
 cd C:\Users\franc\ms-cleanfresh-catalog
+$env:DB_URL="jdbc:postgresql://localhost:5432/catalog_db"
+$env:DB_USER="catalog_user"; $env:DB_PASSWORD="<clave>"
 java -jar target/ms-cleanfresh-catalog-0.0.1-SNAPSHOT.jar
 
 # Terminal 3 — BFF (puerto 8080)
@@ -392,23 +400,34 @@ AWS Cognito (User Pool, Hosted UI)
 
 ---
 
-## Documentación de cambios del frontend (`specs/`)
+## Documentación por entrega (`EP1/` y `EP2/`)
 
-Los cambios funcionales del panel Admin (CRUD de catálogo, CRUD de
-órdenes, modales, filtros, correcciones) se documentan con metodología
-Spec-Driven Development manual en [`specs/README.md`](specs/README.md):
+La documentación se separa por entrega, en la raíz del repo del frontend
+(`CLAUDE.md` y `README.md` se quedan en la raíz: Claude Code carga el primero
+automáticamente y el segundo es la portada del repo):
+
+- **`EP1/`** — entrega 1 (cerrada): Cognito + BFF + API Gateway + EC2.
+  Incluye `EP1/specs/` (specs/fixes 001–028), `EP1/EVIDENCIA-EP1.md` y las
+  explicaciones `EP1/EXPLICACION-*.md`.
+- **`EP2/`** — entrega 2 (en curso): toda documentación nueva va acá.
+  Arquitectura objetivo en [`EP2/ARQUITECTURA.md`](EP2/ARQUITECTURA.md) e
+  índice de specs (029 en adelante) en [`EP2/specs/README.md`](EP2/specs/README.md).
+
+Los cambios funcionales se documentan con metodología Spec-Driven
+Development manual (índice en [`EP1/specs/README.md`](EP1/specs/README.md)):
 cada ítem tiene su spec o fix con Acceptance Criteria, numerados de forma
-única (001, 002, ...) sin importar el tipo. Ver ese índice antes de tocar
-el panel Admin, para no duplicar algo ya resuelto ahí.
+única sin importar el tipo. La numeración **continúa** en EP2 (029, 030, ...)
+para que "Spec NNN" siga siendo inequívoco entre entregas. Ver el índice antes
+de tocar algo ya resuelto.
 
 ---
 
 ## Pendientes
 
-- [ ] Conectar microservicios a **base de datos cloud** (Oracle o PostgreSQL) con entidades JPA y repositorios Spring Data
+- [ ] Conectar microservicios a **base de datos cloud** (Oracle o PostgreSQL) con entidades JPA y repositorios Spring Data — EP2 fase 1 hecha en local (JPA + PostgreSQL en Docker, Spec 029); falta crear la RDS en AWS (fase 5)
 - [x] Migración a Cognito probada en vivo (Fix 027) — login, interceptor y creación de pedidos por Cliente confirmados funcionando; se corrigieron 3 problemas reales en el proceso (typo de `.env`, jar del BFF desactualizado, mismatch `username`/email en "Tus pedidos") y se agregó validación de `scope` en `CognitoTokenValidator`
 - [ ] El mapa `SUCURSAL_POR_OPERADOR` en `OrderService.java` (BFF) sigue con el valor viejo de Azure (`operador@cleanfreshchain.onmicrosoft.com`) — con Cognito debería usar el `username` real del Operador de prueba (un valor tipo UUID, no un email); no confirmado en vivo con esa cuenta todavía
 - [ ] Confirmar que los grupos de Cognito se llaman exactamente `Admin`/`Operador`/`Cliente` con las cuentas de Admin y Operador (solo se confirmó con Cliente)
 - [x] Corregir que al hacer F5 con rol Admin/Operador no muestre vista de Cliente — ya no aplica el workaround original de MSAL; `react-oidc-context` no tiene ese problema de caché
 - [x] Mejorar diseño bento: ajustar overflow de tabla de órdenes, max-height del JSON del BFF — resuelto (`overflow-x: auto` + columnas compactas en la tabla, `max-height: 300px` en el bloque de estado del BFF)
-- [ ] Ver `specs/README.md` → "Pendiente de verificación visual" para los ítems de responsive que faltan probar en navegador
+- [ ] Ver `EP1/specs/README.md` → "Pendiente de verificación visual" para los ítems de responsive que faltan probar en navegador

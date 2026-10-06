@@ -72,14 +72,19 @@ src/
     └── apiService.js       # Cliente axios + interceptor de auth hacia el BFF
 ```
 
-## Documentación de cambios (specs/)
+## Documentación por entrega
 
-Los cambios funcionales de este proyecto se documentan con una
-metodología manual de Spec-Driven Development en
-[`specs/README.md`](specs/README.md): cada funcionalidad nueva o
+- [`EP1/`](EP1/): entrega 1 (cerrada) — specs/fixes 001–028, evidencia y
+  explicaciones de Cognito/BFF.
+- [`EP2/`](EP2/): entrega 2 (en curso) — arquitectura objetivo y
+  documentación nueva.
+
+Los cambios funcionales se documentan con una metodología manual de
+Spec-Driven Development (índice en
+[`EP1/specs/README.md`](EP1/specs/README.md)): cada funcionalidad nueva o
 corrección tiene su spec/fix con Acceptance Criteria y su verificación,
-numerados de forma correlativa. Revisar ese índice antes de tocar el
-dashboard, para no duplicar algo ya resuelto ahí.
+numerados de forma correlativa (la numeración sigue en EP2). Revisar ese
+índice antes de tocar el dashboard, para no duplicar algo ya resuelto ahí.
 
 ## Arquitectura y decisiones técnicas
 
