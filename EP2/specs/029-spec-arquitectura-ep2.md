@@ -114,10 +114,25 @@ Los tests automáticos usan H2.
 | 3 | `orders_user` y `catalog_user` solo conectan a su base: cada uno recibe `permission denied for database` (`User does not have CONNECT privilege`) en la del otro | ✅ Cumple (local) |
 | 4 | `application.yaml` usa `${DB_URL}`/`${DB_USER}`/`${DB_PASSWORD}` sin valores por defecto; sin ellas el servicio sale con código 1; no hay contraseñas literales en `src/main` ni `.env` en git | ✅ Cumple |
 | 5 | Mismos campos JSON que EP1 en `GET /api/orders` y `GET /api/catalog` (inspección de las respuestas); el frontend no se modificó | ✅ Cumple por inspección; falta repetirlo a través del BFF cuando haya Cognito |
-| 6–20 | Fases 2–6 | ⏳ Pendiente |
-
 Pruebas automáticas añadidas: `OrderServiceTests` (3) y `CatalogServiceTests`
 (3), más el `contextLoads` existente, todos en verde. Nota: al probar con `curl`
 desde Git Bash, un carácter con tilde llegó en codificación Windows y el
 servicio respondió 400; es un efecto del cliente de prueba (con UTF-8 explícito
 funciona), no del servicio.
+
+**Fase 2 — microservicios nuevos y rutas del BFF (hecha, solo local).**
+
+| # | AC | Estado |
+|---|---|---|
+| 6 | Existen `ms-cleanfresh-notificaciones` (8083), `-reportes` (8084) y `-auditoria` (8085): Spring Boot 4.1.1 / Java 21, `mvnw clean package` en verde en los tres (tests incluidos), cada uno con README, `.gitignore` y su propio repositorio git local. Los tres arrancaron en su puerto | ✅ Cumple. Repos públicos creados en GitHub (`frani3/ms-cleanfresh-notificaciones`, `-reportes`, `-auditoria`) con su commit inicial subido |
+| 7 | `GET /api/reportes` (8084) y `GET /api/auditoria` (8085) respondieron 200 con las formas `[{branch, orders}]` y `[{time, actor, action, level}]`; sin base de datos ni llamadas a otros servicios | ✅ Cumple |
+| 8 | En el BFF, `/api/reportes` y `/api/auditoria` con `@PreAuthorize("hasRole('Admin')")` y reenvío por `RestClient`. Tests (con `jwt()` simulado y repositorios mockeados): 401 sin token, 403 con Operador y Cliente, 200 con Admin y los datos del servicio. `notificaciones` no tiene ruta en el BFF | ✅ Cumple por tests; falta probarlo en vivo con un token real de Cognito (fase 5) |
+
+Cambios de apoyo: el BFF tenía solo el test `contextLoads`, que ya no podía
+correr sin un Cognito existente (el `JwtDecoder` real consulta al emisor al
+crearse). Ahora ese test, y los nuevos, reemplazan el decoder por un mock y
+corren sin red (8 tests en verde). El User Pool de EP1 ya no existe (el
+emisor responde 404), así que el BFF completo no puede arrancar en local hasta
+recrear Cognito.
+
+**Fases 3–6:** ACs 9–20, ⏳ pendientes.

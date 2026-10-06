@@ -48,10 +48,13 @@ Pool de Cognito si hace falta recrearlas.
 
 | Proyecto | URL |
 |---|---|
-| Frontend | https://github.com/frani3/Clean-Fresh |
+| Frontend | https://github.com/frani3/cleanfresh-frontend |
 | BFF | https://github.com/frani3/ms-cleanfresh-bff |
 | MS Orders | https://github.com/frani3/ms-cleanfresh-orders |
 | MS Catalog | https://github.com/frani3/ms-cleanfresh-catalog |
+| MS Notificaciones (EP2) | https://github.com/frani3/ms-cleanfresh-notificaciones |
+| MS Reportes (EP2) | https://github.com/frani3/ms-cleanfresh-reportes |
+| MS Auditoría (EP2) | https://github.com/frani3/ms-cleanfresh-auditoria |
 
 ---
 
@@ -63,6 +66,9 @@ Pool de Cognito si hace falta recrearlas.
 | BFF | http://localhost:8080 |
 | ms-cleanfresh-orders | http://localhost:8081 |
 | ms-cleanfresh-catalog | http://localhost:8082 |
+| ms-cleanfresh-notificaciones (EP2) | http://localhost:8083 |
+| ms-cleanfresh-reportes (EP2) | http://localhost:8084 |
+| ms-cleanfresh-auditoria (EP2) | http://localhost:8085 |
 
 ---
 
@@ -203,7 +209,9 @@ src/main/java/com/cleanfresh/ms_cleanfresh_bff/
 ├── controller/
 │   ├── HealthController.java      # GET /api/health — público
 │   ├── OrderController.java       # GET /api/orders, /api/orders/{id}, /api/orders/estado/{estado}
-│   └── CatalogController.java     # GET /api/catalog, /api/catalog/{id}, /api/catalog/disponibles
+│   ├── CatalogController.java     # GET /api/catalog, /api/catalog/{id}, /api/catalog/disponibles
+│   ├── ReportesController.java    # GET /api/reportes — solo Admin (EP2, respuesta fija)
+│   └── AuditoriaController.java   # GET /api/auditoria — solo Admin (EP2, respuesta fija)
 ├── service/
 │   ├── OrderService.java
 │   └── CatalogService.java
