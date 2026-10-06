@@ -299,6 +299,8 @@ $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
 # (EP2) orders y catalog necesitan una base PostgreSQL: sin DB_URL/DB_USER/
 # DB_PASSWORD no arrancan. Ver el README de cada repo para levantar una
 # con Docker (orders_db / catalog_db, un usuario por servicio).
+# (EP2) SQS: orders y notificaciones lo traen apagado (SQS_ENABLED=false); para
+# activarlo y probarlo en local con ElasticMQ, ver el README de cada uno.
 
 # Terminal 1 — ms-cleanfresh-orders (puerto 8081)
 cd C:\Users\franc\ms-cleanfresh-orders

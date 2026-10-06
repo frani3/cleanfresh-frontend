@@ -135,4 +135,24 @@ corren sin red (8 tests en verde). El User Pool de EP1 ya no existe (el
 emisor responde 404), así que el BFF completo no puede arrancar en local hasta
 recrear Cognito.
 
-**Fases 3–6:** ACs 9–20, ⏳ pendientes.
+**Fase 3 — SQS (hecha, solo local con ElasticMQ).** Probada contra ElasticMQ,
+un emulador de SQS compatible con la API, no contra AWS: la cola real se crea
+en la fase 5. Cola `cleanfresh-ordenes`.
+
+| # | AC | Estado |
+|---|---|---|
+| 9 | `POST /api/orders` creó `ORD-0008`; `orders` publicó `ORDEN_CREADA` en la cola (con `numeroOrden`, `cliente`, `servicio`, `sucursal`, `total`, `fecha`), después de confirmarse la transacción (`@TransactionalEventListener(AFTER_COMMIT)`) | ✅ Cumple (local) |
+| 10 | `notificaciones` consumió el mensaje y registró "Notificación: la orden ORD-0008 de Cliente Cola (Planchado, sucursal Providencia, total 15000.0) fue creada"; la cola quedó en 0 mensajes (se elimina solo tras procesar bien) | ✅ Cumple (local) |
+| 11 | Con `notificaciones` caído: `POST` → 201 (`ORD-0009`), el mensaje esperó en la cola (visibles=1) y, al volver el consumidor, se procesó (aviso de `ORD-0009`, cola en 0). Con SQS inalcanzable: `POST` → 201 (`ORD-0010`) y el log dice "No se pudo publicar ORDEN_CREADA de ORD-0010 en SQS; la orden ya quedó creada" | ✅ Cumple (local) |
+| 12 | Sin ninguna variable de AWS: `POST` → 201 (`ORD-0011`) y no se crea ningún bean de SQS (`app.sqs.enabled=false` por defecto) | ✅ Cumple |
+
+Pruebas automáticas añadidas: `OrderEventTests` (2, en `orders`) y
+`NotificationServiceTests` (3) y `OrderQueuePollerTests` (2) en `notificaciones`.
+
+Límites conocidos, fuera de alcance: la entrega de SQS es "al menos una vez" (un
+mensaje puede repetirse) y un mensaje inválido se reintenta indefinidamente
+porque no hay cola de mensajes fallidos (DLQ). Al matar el consumidor en pleno
+long polling, su mensaje queda "no visible" hasta que vence el tiempo de
+visibilidad (30 s) y vuelve a la cola; es comportamiento normal de SQS.
+
+**Fases 4–6:** ACs 13–20, ⏳ pendientes.

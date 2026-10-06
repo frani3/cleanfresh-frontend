@@ -153,7 +153,8 @@ Puntos a tener en cuenta:
    estado todavía vive solo en el navegador); `notificaciones` lo consume y
    registra el aviso (log). Sin envío real de correo. Una cola estándar
    entrega cada mensaje a un solo consumidor, así que esta cola es solo de
-   `notificaciones`.
+   `notificaciones`. La cola se llama `cleanfresh-ordenes`; ambos servicios la
+   usan con el AWS SDK v2 y la tienen apagada por defecto (`SQS_ENABLED=false`).
 5. **Los microservicios confían totalmente en el BFF.** Ninguno valida el
    JWT: el BFF es el único punto que autentica, autoriza por rol y decide qué
    datos ve cada usuario. Como esa confianza solo es segura si nadie más puede
