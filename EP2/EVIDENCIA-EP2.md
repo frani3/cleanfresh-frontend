@@ -97,3 +97,42 @@ y el login funcionó.
 La causa del cuelgue fue memoria: cinco JVM con el heap por defecto en una
 `t3.small` (2 GB) con el swap perdido tras el reinicio. Se subió a `t3.medium` y
 se dejó el swap en `/etc/fstab` (`Swap: 2047`).
+
+## 6. Verificación final automatizada (`verificar.sh --reiniciar`)
+
+Ejecutada en la EC2 #2 sobre el despliegue en AWS, con el `LabInstanceProfile`
+para SQS y las credenciales de cada servicio para la RDS. Crea una orden de
+prueba (`ORD-0009`), por eso las órdenes pasan de 8 a 9.
+
+```
+1) Contenedores
+  OK   orders Up 14 minutes
+  OK   catalog Up 14 minutes
+  OK   notificaciones Up 14 minutes
+  OK   reportes Up 14 minutes
+  OK   auditoria Up 14 minutes
+2) Servicios responden
+  OK   orders: 8 órdenes
+  OK   catalog: 5 servicios
+  OK   reportes: respuesta fija
+  OK   auditoria: respuesta fija
+  OK   notificaciones: proceso activo (HTTP 404; no tiene endpoints propios)
+3) Bases de datos en la RDS (consulta directa con el usuario de cada servicio)
+  OK   orders_db: 8 órdenes, última ORD-0008
+  OK   catalog_db: 5 servicios, 20 filas de disponibilidad por sucursal
+4) Aislamiento: cada usuario solo entra a su base
+  OK   orders_user NO puede entrar a catalog_db
+  OK   catalog_user NO puede entrar a orders_db
+5) Cola SQS: orders publica y notificaciones consume
+  OK   orden creada: ORD-0009 (Verificacion-040315)
+  OK   notificaciones recibió ORD-0009 desde SQS: Notificación: la orden ORD-0009 de Verificacion-040315 (Planchado, sucursal Providencia, total 9500.0) fue creada
+  OK   orders sin errores de publicación
+6) Persistencia tras reiniciar orders
+  OK   antes: 9, después: 9 órdenes
+
+Todo OK
+```
+
+Esto demuestra en vivo: los 5 servicios en Docker, los datos en PostgreSQL
+(RDS) con una base y un usuario por servicio, el aislamiento entre bases, el
+recorrido completo por SQS y la persistencia tras un reinicio.
