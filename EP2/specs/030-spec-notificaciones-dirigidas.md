@@ -184,4 +184,24 @@ Operador, el BFF busca la orden entre todas las que devuelve `orders`, porque
 ese servicio no tiene consulta por número de orden; con datos de este tamaño es
 aceptable.
 
-Fases 4–5: ⏳ pendientes.
+**Fase 4 — frontend (hecha, con el BFF simulado).** Se probó la app compilada
+(`npm run build`, sin advertencias) en Chrome sin interfaz, con una sesión de
+Cognito simulada y respuestas simuladas del BFF (interceptadas en el navegador).
+Comprueba la pantalla real y las llamadas que hace, no el backend: eso queda para
+la fase 5.
+
+| # | AC | Estado |
+|---|---|---|
+| 10 | El Operador cambia el estado desde "Ver → Ajustar estado → Confirmar cambio" y se llama a `PUT /api/orders/ORD-0014/estado?sucursal=Providencia` con `{"estado":"DESPACHADO"}`; el Admin, desde su modal "Guardar cambios", llama al mismo `PUT` sin sucursal. Con el backend respondiendo 403, ambos muestran "No se pudo cambiar la orden ORD-0014: no tienes permiso sobre esa orden." y la orden **sigue en "En preparación"** | ✅ Cumple (BFF simulado) |
+| 11 | La campanita aparece en las tres vistas. Cliente y Operador ven el contador (1), el panel con el aviso resaltado ("Pedido listo" / "Pedido nuevo") y, al abrirlo, se llama a `POST /api/notificaciones/leidas` (el Operador con su sucursal) y el contador desaparece. El Admin ve los dos avisos en modo lectura, sin contador y sin llamar a `leidas`. Se consulta al abrir y cada 15 s | ✅ Cumple (BFF simulado) |
+| 12 | Flujo completo con los tres roles contra el backend real | ⏳ Fase 5 (AWS) |
+
+Detalles: se encontró y corrigió una carrera al abrir el panel (pedir la lista y
+marcar como leídos a la vez dejaba que una respuesta vieja devolviera el
+contador); ahora se marca primero y se refresca después. La pantalla solo
+refleja un cambio de estado si el backend lo aceptó. Componente nuevo:
+`src/components/NotificationBell.jsx`. Limitación: el `App.test.js` heredado de la
+plantilla ya estaba roto (usa `@testing-library`, que no está instalado) y no se
+tocó; la verificación de esta fase fue con el navegador, no con tests unitarios.
+
+Fase 5: ⏳ pendiente.

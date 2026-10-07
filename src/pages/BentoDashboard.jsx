@@ -30,7 +30,8 @@ import {
   X,
   RefreshCw,
 } from "lucide-react";
-import { getHealth, getCatalog, getOrders, createOrder } from "../services/apiService";
+import { getHealth, getCatalog, getOrders, createOrder, updateOrderStatus } from "../services/apiService";
+import NotificationBell from "../components/NotificationBell";
 
 /* =========================================================
    Datos mock — en producción vendrían de las APIs de
@@ -1573,6 +1574,15 @@ function ClienteView({ services, orders, cognitoUsername, onRequestOrder }) {
    Dashboard principal
    ========================================================= */
 
+// Spec 030: texto legible para un error al cambiar el estado de una orden.
+function describeStatusError(error) {
+  const status = error?.response?.status;
+  if (status === 403) return "no tienes permiso sobre esa orden.";
+  if (status === 404) return "la orden ya no existe.";
+  if (status === 400) return "el estado no es válido.";
+  return error?.message || "error desconocido.";
+}
+
 function BentoDashboard() {
   const auth = useAuth();
 
@@ -1590,6 +1600,8 @@ function BentoDashboard() {
   const roleVariant = isAdmin ? "admin" : isOperador ? "operador" : "cliente";
 
   const [orders, setOrders] = useState([]);
+  // Spec 030: error al guardar un cambio de estado en el backend.
+  const [statusError, setStatusError] = useState("");
   const [services, setServices] = useState([]);
   const [healthError, setHealthError] = useState(null);
   const [latencyMs, setLatencyMs] = useState(null);
@@ -1683,8 +1695,24 @@ function BentoDashboard() {
     };
   };
 
-  const changeOrderStatus = (id, newStatus) => {
-    setOrders((prev) => prev.map((o) => (o.id === id ? recordStatusChange(o, newStatus) : o)));
+  // Spec 030: el cambio de estado se guarda en el backend (que avisa al
+  // Cliente cuando la orden queda lista). La pantalla lo refleja solo si el
+  // backend lo aceptó; si no, muestra el error y deja el estado como estaba.
+  const saveOrderStatus = async (id, newStatus) => {
+    try {
+      await updateOrderStatus(id, newStatus, roleVariant === "operador" ? operadorSucursal : undefined);
+      return true;
+    } catch (error) {
+      setStatusError(`No se pudo cambiar la orden ${id}: ${describeStatusError(error)}`);
+      return false;
+    }
+  };
+
+  const changeOrderStatus = async (id, newStatus) => {
+    setStatusError("");
+    if (await saveOrderStatus(id, newStatus)) {
+      setOrders((prev) => prev.map((o) => (o.id === id ? recordStatusChange(o, newStatus) : o)));
+    }
   };
 
   const addService = (data) => {
@@ -1729,7 +1757,18 @@ function BentoDashboard() {
     setOrders((prev) => [created, ...prev]);
   };
 
-  const updateOrder = (data) => {
+  const updateOrder = async (data) => {
+    setStatusError("");
+    // Spec 030: solo el estado se guarda en el backend; si cambió, primero
+    // hay que confirmarlo allá. Si falla, el resto de los campos se aplica
+    // igual y el estado queda como estaba.
+    const current = orders.find((o) => o.id === data.id);
+    let statusToApply = current ? current.status : data.status;
+    if (current && data.status && data.status !== current.status) {
+      if (await saveOrderStatus(current.id, data.status)) {
+        statusToApply = data.status;
+      }
+    }
     setOrders((prev) =>
       prev.map((o) => {
         if (o.id !== data.id) return o;
@@ -1738,7 +1777,7 @@ function BentoDashboard() {
         // agregar una entrada al historial (comparando contra el estado
         // original, antes de la fusión).
         const merged = { ...o, ...data, status: o.status };
-        return recordStatusChange(merged, data.status);
+        return recordStatusChange(merged, statusToApply);
       })
     );
   };
@@ -1768,18 +1807,33 @@ function BentoDashboard() {
 
   return (
     <main className="dash2-main">
-      <div className="dash2-header">
-        <h2>
-          {roleVariant === "admin" && "Panel de administración"}
-          {roleVariant === "operador" && "Panel operativo"}
-          {roleVariant === "cliente" && "Mi cuenta"}
-        </h2>
-        <p>
-          {roleVariant === "admin" && "Vista general del sistema, órdenes y sucursales."}
-          {roleVariant === "operador" && "Gestiona el flujo de las órdenes en tu turno."}
-          {roleVariant === "cliente" && "Sigue tus pedidos y solicita nuevos servicios."}
-        </p>
+      <div className="dash2-header dash2-header-row">
+        <div>
+          <h2>
+            {roleVariant === "admin" && "Panel de administración"}
+            {roleVariant === "operador" && "Panel operativo"}
+            {roleVariant === "cliente" && "Mi cuenta"}
+          </h2>
+          <p>
+            {roleVariant === "admin" && "Vista general del sistema, órdenes y sucursales."}
+            {roleVariant === "operador" && "Gestiona el flujo de las órdenes en tu turno."}
+            {roleVariant === "cliente" && "Sigue tus pedidos y solicita nuevos servicios."}
+          </p>
+        </div>
+        <NotificationBell
+          roleVariant={roleVariant}
+          sucursal={roleVariant === "operador" ? operadorSucursal : undefined}
+        />
       </div>
+
+      {statusError && (
+        <div className="dash2-alert" role="alert">
+          <span>{statusError}</span>
+          <button type="button" onClick={() => setStatusError("")} aria-label="Cerrar aviso">
+            ×
+          </button>
+        </div>
+      )}
 
       {roleVariant === "admin" && (
         <AdminView

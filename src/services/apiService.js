@@ -87,3 +87,31 @@ export async function createOrder({ service, price, branch }) {
   });
   return mapOrder(response.data, response.data.cliente);
 }
+
+// Spec 030: cambia el estado de una orden en el backend (antes solo vivía
+// en el estado de React). `numeroOrden` es el id que usa la pantalla
+// (ORD-0014). El Operador manda su sucursal en turno: el BFF solo le deja
+// cambiar órdenes de esa sucursal.
+export async function updateOrderStatus(numeroOrden, estado, sucursal) {
+  const response = await apiClient.put(
+    `/orders/${encodeURIComponent(numeroOrden)}/estado`,
+    { estado },
+    { params: sucursal ? { sucursal } : undefined }
+  );
+  return response.data;
+}
+
+// Spec 030: avisos del usuario de la sesión. El BFF decide cuáles le
+// corresponden según su rol; el Operador indica su sucursal en turno.
+export async function getNotifications(sucursal) {
+  const response = await apiClient.get("/notificaciones", {
+    params: sucursal ? { sucursal } : undefined,
+  });
+  return response.data;
+}
+
+export async function markNotificationsRead(sucursal) {
+  await apiClient.post("/notificaciones/leidas", null, {
+    params: sucursal ? { sucursal } : undefined,
+  });
+}
