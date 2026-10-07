@@ -172,24 +172,35 @@ Puntos a tener en cuenta:
 | ms-cleanfresh-reportes | 8084 | no | esqueleto: controller con respuesta fija |
 | ms-cleanfresh-auditoria | 8085 | no | esqueleto: controller con respuesta fija |
 
-## Entorno AWS: se recrea al final
+## Entorno AWS desplegado
 
-El laboratorio de AWS se renovó, así que todo lo creado en EP1 hay que volver a
-crearlo en el nuevo: **Cognito** (User Pool, App Client, dominio del Hosted UI,
-Resource Server con el scope `access_as_user`, grupos Admin/Operador/Cliente y
-usuarios de prueba), **API Gateway** (rutas, JWT Authorizer, ruta `OPTIONS`),
-EC2, RDS y SQS. Los IDs, URLs e IPs que aparecen en `CLAUDE.md` y en
-`EP1/` corresponden al laboratorio anterior y cambiarán.
+El laboratorio de AWS se renovó y el entorno de EP1 dejó de existir, así que
+todo se volvió a crear en el nuevo (fase 5 de la Spec 029). Los valores
+vigentes están en la sección "Despliegue en AWS" de `CLAUDE.md`; la verificación
+en [`EVIDENCIA-EP2.md`](EVIDENCIA-EP2.md).
 
-Orden de trabajo acordado: primero se implementa y verifica todo en local
-(fases 1–4 del plan de la Spec 029) y la creación en AWS (fase 5) va al final.
-Consecuencia: mientras tanto el frontend no puede hacer login ni hablar con
-API Gateway, y el BFF no arranca si no alcanza un emisor de Cognito válido
-(valida el JWT al iniciar); los microservicios sí se prueban directo, porque no
-validan JWT.
+| Capa | Recurso |
+|---|---|
+| IDaaS | Cognito User Pool `cleanfresh-users`, App Client `cleanfresh-spa` (SPA, sin secret), Hosted UI, scope `https://api.cleanfresh.com/access_as_user`, grupos Admin/Operador/Cliente |
+| Entrada | API Gateway HTTP API con JWT Authorizer; `OPTIONS` sin authorizer; CORS en el BFF |
+| EC2 #1 | BFF en Docker (`:8080`), `t3.small` |
+| EC2 #2 | 5 microservicios con `docker compose` (`:8081`–`:8085`), `t3.medium`, swap persistente |
+| Datos | RDS PostgreSQL 16, bases `orders_db` y `catalog_db`, un usuario por servicio, sin acceso público |
+| Mensajería | SQS Standard `cleanfresh-ordenes`, con el `LabInstanceProfile` de las EC2 |
+| Red | tres grupos de seguridad encadenados: internet → BFF → microservicios → RDS |
 
-## Pendiente de decidir
+Se usó el `LabInstanceProfile` que ya trae AWS Academy: no hizo falta crear
+roles IAM propios.
 
-- Cuenta de AWS: las capturas muestran una sesión `voclabs` (AWS Academy). Ahí
-  normalmente no se pueden crear roles IAM propios y se usa el `LabRole` ya
-  existente; hay que confirmarlo antes de configurar SQS.
+## Lecciones del despliegue
+
+- **RDS no es un PostgreSQL con superusuario.** `CREATE DATABASE ... OWNER x`
+  falla si el usuario maestro no es miembro de `x`; hay que hacer
+  `GRANT x TO postgres` antes.
+- **Cinco JVM en una `t3.small` no caben.** Tras un reinicio la máquina dejó de
+  responder (ni SSH ni EC2 Instance Connect) y hubo que hacer Stop/Start. Se
+  subió a `t3.medium`, se hizo persistente el swap y se acotó el heap por
+  servicio en el `docker-compose.yml`.
+- **El `redirect_uri` debe coincidir exactamente.** La app envía
+  `http://localhost:3000/`; registrar solo `/redirect.html` da
+  `redirect_mismatch`.

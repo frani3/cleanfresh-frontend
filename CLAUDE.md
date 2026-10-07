@@ -28,19 +28,21 @@ Sistema de gestión para una cadena de lavanderías llamada **Clean&Fresh**, des
 
 | Dato | Valor |
 |---|---|
-| Authority (issuer) | `https://cognito-idp.us-east-1.amazonaws.com/us-east-1_yi2mx8XVs` |
-| Client ID | `5ct1362lebamr1fpmotcofinl6` |
-| Dominio (Hosted UI) | `https://us-east-1yi2mx8xvs.auth.us-east-1.amazoncognito.com` |
-| Redirect URI | `http://localhost:3000/redirect.html` |
+| Authority (issuer) | `https://cognito-idp.us-east-1.amazonaws.com/us-east-1_Xj0EYCnUK` |
+| Client ID | `37oq5a3q9ur02q13k6c8rg6mct` |
+| Dominio (Hosted UI) | `https://us-east-1xj0eycnuk.auth.us-east-1.amazoncognito.com` |
+| Redirect URI (callback) | `http://localhost:3000/` (con la barra final; el código usa `${origin}/`) |
 | Logout URI | `http://localhost:3000` |
 | Scope | `openid email profile https://api.cleanfresh.com/access_as_user` |
 
 ### Usuarios de prueba
 
 Uno por rol (Admin, Operador, Cliente), como grupos del User Pool
-(`cognito:groups`) — mismos nombres de rol que antes. Las credenciales
-puntuales no quedaron documentadas acá; confirmarlas contra el User
-Pool de Cognito si hace falta recrearlas.
+(`cognito:groups`): `admin@cleanfresh.com`, `operador@cleanfresh.com` y un
+Cliente. Las contraseñas no se documentan acá. El User Pool actual
+(`cleanfresh-users`, App Client `cleanfresh-spa`) se creó de nuevo en EP2: el
+laboratorio de EP1 ya no existe. El access token solo trae `username` (un UUID),
+no el correo.
 
 ---
 
@@ -72,33 +74,36 @@ Pool de Cognito si hace falta recrearlas.
 
 ---
 
-## Despliegue en AWS (Spec 028)
+## Despliegue en AWS (EP2, Spec 029)
 
-Además de correr todo en local, el BFF y los dos microservicios están
-desplegados en 3 instancias EC2 (`us-east-1`), con API Gateway como
-intermediario delante del BFF. El frontend sigue en `localhost:3000` —
-no se desplegó, solo se lo apuntó a un backend real en la nube vía
-`.env` (`REACT_APP_BFF_URL`).
+El entorno de EP1 (3 EC2 + API Gateway) dejó de existir al renovarse el
+laboratorio, y en EP2 se recreó con otra arquitectura. El frontend sigue en
+`localhost:3000` apuntando por `.env` a API Gateway. Detalle y verificación en
+[`EP2/ARQUITECTURA.md`](EP2/ARQUITECTURA.md) y `EP2/EVIDENCIA-EP2.md`.
 
 | Recurso | Valor |
 |---|---|
-| EC2 `cleanfresh-bff` | `13.222.150.67:8080` |
-| EC2 `cleanfresh-orders` | `3.86.143.171:8081` |
-| EC2 `cleanfresh-catalog` | `44.203.57.139:8082` |
-| API Gateway (`cleanfresh-api`) | `https://hucylsdii5.execute-api.us-east-1.amazonaws.com` |
-| Ruta `ANY /{proxy+}` | → BFF, con JWT Authorizer de Cognito atado |
-| Ruta `OPTIONS /{proxy+}` | → BFF, sin authorizer (preflight CORS no manda token) |
+| EC2 #1 `cleanfresh-bff` (`t3.small`) | `54.162.55.63:8080`, BFF en Docker |
+| EC2 #2 `cleanfresh-ms` (`t3.medium`) | IP privada `172.31.39.91`; IP pública `3.92.55.203` (cambia con cada Stop/Start, solo se usa para SSH). 5 microservicios con `docker compose` en 8081–8085 |
+| RDS PostgreSQL 16 `cleanfresh-db` | `cleanfresh-db.cjeictyledp6.us-east-1.rds.amazonaws.com:5432`, bases `orders_db` y `catalog_db`, un usuario por servicio, sin acceso público |
+| SQS | cola Standard `cleanfresh-ordenes` (`us-east-1`); las EC2 usan el `LabInstanceProfile` |
+| API Gateway (`cleanfresh-api`, HTTP API) | `https://0ksy5y3586.execute-api.us-east-1.amazonaws.com` |
+| Ruta `ANY /{proxy+}` | → BFF, con JWT Authorizer de Cognito (audience = client id) |
+| Ruta `OPTIONS /{proxy+}` | → BFF, sin authorizer (el preflight no manda token) |
 
-**CORS**: lo resuelve el propio BFF (su `CorsConfigurationSource` ya
-existente), no el CORS nativo de API Gateway — se probó ese camino
-primero y API Gateway terminaba descartando los headers CORS del
-backend sin reemplazarlos del todo, dejando el preflight sin headers.
-Se sacó la config de CORS a nivel API y con eso el BFF contesta el
-preflight él solo, correctamente.
+Grupos de seguridad: `cleanfresh-sg-bff` (8080 público, 22 desde la IP del
+autor), `cleanfresh-sg-ms` (8081–8085 solo desde `cleanfresh-sg-bff`) y
+`cleanfresh-sg-rds` (5432 solo desde `cleanfresh-sg-ms`).
 
-**Costo real:** estos son recursos reales de AWS con costo asociado —
-apagar/eliminar las 3 EC2 y la API Gateway después de la evaluación si
-no se van a seguir usando.
+**CORS**: lo resuelve el propio BFF; no se configura CORS en API Gateway (si se
+activa, pisa los headers del BFF y rompe el preflight).
+
+**Operación:** el swap de la EC2 #2 es persistente (`/etc/fstab`). Con
+`t3.small` los 5 servicios Java dejaron la máquina sin responder tras un
+reinicio; por eso es `t3.medium`.
+
+**Costo real:** son recursos reales de AWS con costo — apagar o eliminar las
+2 EC2, la RDS y la API Gateway después de la evaluación si no se van a usar.
 
 ---
 
@@ -106,16 +111,17 @@ no se van a seguir usando.
 
 ### Frontend (`.env` en raíz del proyecto)
 ```
-REACT_APP_COGNITO_AUTHORITY=https://cognito-idp.us-east-1.amazonaws.com/us-east-1_yi2mx8XVs
-REACT_APP_COGNITO_CLIENT_ID=5ct1362lebamr1fpmotcofinl6
-REACT_APP_COGNITO_DOMAIN=https://us-east-1yi2mx8xvs.auth.us-east-1.amazoncognito.com
+REACT_APP_COGNITO_AUTHORITY=https://cognito-idp.us-east-1.amazonaws.com/us-east-1_Xj0EYCnUK
+REACT_APP_COGNITO_CLIENT_ID=37oq5a3q9ur02q13k6c8rg6mct
+REACT_APP_COGNITO_DOMAIN=https://us-east-1xj0eycnuk.auth.us-east-1.amazoncognito.com
 REACT_APP_API_SCOPE=https://api.cleanfresh.com/access_as_user
+REACT_APP_BFF_URL=https://0ksy5y3586.execute-api.us-east-1.amazonaws.com/api
 ```
 
 ### BFF (variables de entorno del proceso, no `.env`)
 ```
-COGNITO_ISSUER_URI=https://cognito-idp.us-east-1.amazonaws.com/us-east-1_yi2mx8XVs
-COGNITO_CLIENT_ID=5ct1362lebamr1fpmotcofinl6
+COGNITO_ISSUER_URI=https://cognito-idp.us-east-1.amazonaws.com/us-east-1_Xj0EYCnUK
+COGNITO_CLIENT_ID=37oq5a3q9ur02q13k6c8rg6mct
 ```
 
 ---
@@ -128,7 +134,7 @@ import { UserManager } from "oidc-client-ts";
 export const cognitoAuthConfig = {
   authority: process.env.REACT_APP_COGNITO_AUTHORITY,
   client_id: process.env.REACT_APP_COGNITO_CLIENT_ID,
-  redirect_uri: `${window.location.origin}/redirect.html`,
+  redirect_uri: `${window.location.origin}/`,
   response_type: "code",
   scope: `openid email profile ${process.env.REACT_APP_API_SCOPE}`,
   post_logout_redirect_uri: window.location.origin,
@@ -153,11 +159,11 @@ export const userManager = new UserManager(cognitoAuthConfig);
 > único identificador de la persona ahí es `username`. El BFF lo usa en
 > vez de `preferred_username` (ver `OrderService.java`).
 
-`public/redirect.html` está registrado en Cognito como callback URL de
-la app. En vez de duplicar la lógica de `oidc-client-ts` en HTML
-estático suelto, ese archivo solo rebota a `/` conservando
-`?code=&state=`, y ahí el `AuthProvider` (montado en la app real)
-procesa el login normalmente.
+> **Callback:** la app usa `${window.location.origin}/` como `redirect_uri`, así
+> que el App Client de Cognito debe tener registrado `http://localhost:3000/`
+> (con barra final y `http`). `public/redirect.html` es un resto de EP1: ya no
+> se usa y no hace falta registrarlo. Si falta la URL exacta, el Hosted UI
+> responde `redirect_mismatch` al pulsar "Iniciar sesión".
 
 ---
 
@@ -207,7 +213,7 @@ src/main/java/com/cleanfresh/ms_cleanfresh_bff/
 ├── config/
 │   └── SecurityConfig.java        # JWT validation, CORS, stateless, @EnableMethodSecurity
 ├── controller/
-│   ├── HealthController.java      # GET /api/health — público
+│   ├── HealthController.java      # GET /api/health — requiere token (solo /actuator/health es público)
 │   ├── OrderController.java       # GET /api/orders, /api/orders/{id}, /api/orders/estado/{estado}
 │   ├── CatalogController.java     # GET /api/catalog, /api/catalog/{id}, /api/catalog/disponibles
 │   ├── ReportesController.java    # GET /api/reportes — solo Admin (EP2, respuesta fija)
@@ -316,8 +322,8 @@ java -jar target/ms-cleanfresh-catalog-0.0.1-SNAPSHOT.jar
 
 # Terminal 3 — BFF (puerto 8080)
 cd C:\Users\franc\ms-cleanfresh-bff
-$env:COGNITO_ISSUER_URI="https://cognito-idp.us-east-1.amazonaws.com/us-east-1_yi2mx8XVs"
-$env:COGNITO_CLIENT_ID="5ct1362lebamr1fpmotcofinl6"
+$env:COGNITO_ISSUER_URI="https://cognito-idp.us-east-1.amazonaws.com/us-east-1_Xj0EYCnUK"
+$env:COGNITO_CLIENT_ID="37oq5a3q9ur02q13k6c8rg6mct"
 java -jar target/ms-cleanfresh-bff-0.0.1-SNAPSHOT.jar
 
 # Terminal 4 — Frontend (puerto 3000)
@@ -389,7 +395,7 @@ BFF Spring Boot (localhost:8080)
 AWS Cognito (User Pool, Hosted UI)
         |
         |-- emite access_token con claims "cognito:groups", "client_id", "token_use", "username"
-        |-- issuer: https://cognito-idp.us-east-1.amazonaws.com/us-east-1_yi2mx8XVs
+        |-- issuer: https://cognito-idp.us-east-1.amazonaws.com/us-east-1_Xj0EYCnUK
 ```
 
 ---
@@ -434,10 +440,12 @@ de tocar algo ya resuelto.
 
 ## Pendientes
 
-- [ ] Conectar microservicios a **base de datos cloud** (Oracle o PostgreSQL) con entidades JPA y repositorios Spring Data — EP2 fase 1 hecha en local (JPA + PostgreSQL en Docker, Spec 029); falta crear la RDS en AWS (fase 5)
+- [x] Conectar microservicios a **base de datos cloud** con entidades JPA y repositorios Spring Data — hecho en EP2 (Spec 029): `orders` y `catalog` sobre PostgreSQL en RDS, verificado en vivo
 - [x] Migración a Cognito probada en vivo (Fix 027) — login, interceptor y creación de pedidos por Cliente confirmados funcionando; se corrigieron 3 problemas reales en el proceso (typo de `.env`, jar del BFF desactualizado, mismatch `username`/email en "Tus pedidos") y se agregó validación de `scope` en `CognitoTokenValidator`
-- [ ] El mapa `SUCURSAL_POR_OPERADOR` en `OrderService.java` (BFF) sigue con el valor viejo de Azure (`operador@cleanfreshchain.onmicrosoft.com`) — con Cognito debería usar el `username` real del Operador de prueba (un valor tipo UUID, no un email); no confirmado en vivo con esa cuenta todavía
-- [ ] Confirmar que los grupos de Cognito se llaman exactamente `Admin`/`Operador`/`Cliente` con las cuentas de Admin y Operador (solo se confirmó con Cliente)
+- [ ] El mapa `SUCURSAL_POR_OPERADOR` en `OrderService.java` (BFF) sigue con el valor viejo de Azure (`operador@cleanfreshchain.onmicrosoft.com`), así que no coincide con el `username` (UUID) del Operador de Cognito. No bloquea nada: el Operador filtra por su selector "Sucursal en turno" (`?sucursal=`), y el mapa solo es un respaldo
+- [x] Grupos de Cognito `Admin`/`Operador`/`Cliente` confirmados en vivo en EP2: el Admin ve Reportería/Auditoría y recibe 200 en `/api/reportes` y `/api/auditoria`; el Operador recibe 403 en ambas
+- [ ] Texto "JWT Azure CIAM" en la tarjeta de estado del panel Admin: resto cosmético de la migración a Cognito
+- [ ] Verificar el 403 de `/api/reportes` y `/api/auditoria` con el rol Cliente (solo se probó Operador)
 - [x] Corregir que al hacer F5 con rol Admin/Operador no muestre vista de Cliente — ya no aplica el workaround original de MSAL; `react-oidc-context` no tiene ese problema de caché
 - [x] Mejorar diseño bento: ajustar overflow de tabla de órdenes, max-height del JSON del BFF — resuelto (`overflow-x: auto` + columnas compactas en la tabla, `max-height: 300px` en el bloque de estado del BFF)
 - [ ] Ver `EP1/specs/README.md` → "Pendiente de verificación visual" para los ítems de responsive que faltan probar en navegador

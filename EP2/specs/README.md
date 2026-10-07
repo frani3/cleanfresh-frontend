@@ -14,4 +14,4 @@ del índice de EP1; la plantilla está en
 
 | # | Tipo | Título | Estado | Archivo |
 |---|------|--------|--------|---------|
-| 029 | Spec | Arquitectura EP2: persistencia, contenedores, mensajería y nuevos microservicios | 🟡 Aprobada (en implementación) | [029-spec-arquitectura-ep2.md](029-spec-arquitectura-ep2.md) |
+| 029 | Spec | Arquitectura EP2: persistencia, contenedores, mensajería y nuevos microservicios | ✅ Verificado | [029-spec-arquitectura-ep2.md](029-spec-arquitectura-ep2.md) |

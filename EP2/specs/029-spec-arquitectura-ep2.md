@@ -1,7 +1,7 @@
 ---
 id: 029
 type: spec
-status: approved
+status: verified
 ---
 
 # Spec 029 — Arquitectura EP2: persistencia, contenedores, mensajería y nuevos microservicios
@@ -100,8 +100,8 @@ API Gateway, datos en memoria):
 
 ## Verificación
 
-La implementación avanza por fases (ver el plan en el chat de aprobación); esta
-tabla se completa a medida que cada fase se prueba.
+La implementación avanzó por fases (ver el plan en el chat de aprobación); cada
+tabla se completó al probar su fase.
 
 **Fase 1 — persistencia (hecha, solo local).** Probada contra PostgreSQL 16 en
 Docker en la máquina de desarrollo, no contra RDS (la RDS se crea en la fase 5).
@@ -169,4 +169,36 @@ Probado contra el Postgres local, no contra RDS ni en una EC2.
 Límite conocido: SQS dentro de Docker no se probó (en la fase 3 se probó con los
 jars); se comprobará contra la cola real en la fase 5.
 
-**Fases 5–6:** ACs 16–20, ⏳ pendientes.
+**Fase 5 — AWS (hecha, en vivo).** Entorno recreado desde cero en el laboratorio
+nuevo: Cognito, RDS, SQS, 2 EC2, 3 grupos de seguridad y API Gateway. Los
+comandos y salidas están en [`EP2/EVIDENCIA-EP2.md`](../EVIDENCIA-EP2.md).
+
+| # | AC | Estado |
+|---|---|---|
+| 13 | Además de local: los 5 microservicios corren en la EC2 #2 y el BFF en la EC2 #1, ambos solo con variables de entorno | ✅ Cumple |
+| 14 | Tras un reinicio de la EC2 #2 los 5 contenedores volvieron solos (`Up`); tras un Stop/Start completo, también, con las 8 órdenes en la RDS | ✅ Cumple |
+| 15 | BFF en Docker en la EC2 #1 (`:8080`); tras reiniciar la instancia volvió solo (`bff Up`, `/actuator/health` 200) | ✅ Cumple |
+| 16 | Desde internet, 8081–8085 de la EC2 #2 y 5432 de la RDS no responden, y aun así la cadena BFF → microservicios → RDS funciona. No se auditaron las reglas del grupo de seguridad una por una: el aislamiento está probado por comportamiento | ✅ Cumple (por comportamiento) |
+| 17 | 401 sin token (en API Gateway y directo al BFF) y con token falso; 200 del Admin y 403 del Operador en `/api/reportes` y `/api/auditoria`. Los microservicios no validan JWT. Falta probar el 403 con el rol Cliente | ✅ Cumple (Cliente sin probar) |
+| 18 | Con los 3 roles: el Cliente solicitó un servicio (`ORD-0008`, que viajó por SQS y generó el aviso de `notificaciones`); Admin y Operador ven esa orden en sus paneles, con sus tarjetas por rol | ✅ Cumple |
+| 5 | Repetido a través del BFF real: los paneles muestran los mismos campos de `orders` y `catalog` que en EP1, sin cambiar el frontend | ✅ Cumple |
+| 8 | Probado en vivo con tokens reales de Cognito (no solo con tests) | ✅ Cumple |
+
+**Fase 6 — cierre.**
+
+| # | AC | Estado |
+|---|---|---|
+| 19 | Las EC2 de EP1 ya no existen (el laboratorio se renovó). Las nuevas deben apagarse o eliminarse tras la evaluación para no generar costo | ✅ Cumple |
+| 20 | Evidencia de comandos y salidas en `EP2/EVIDENCIA-EP2.md`; las capturas de pantalla del panel de cada rol quedan por adjuntar | ✅ Cumple (capturas pendientes de adjuntar) |
+
+Problemas reales encontrados al desplegar (todos resueltos, detalle en
+`ARQUITECTURA.md`): la RDS exige `GRANT` antes de `CREATE DATABASE ... OWNER`;
+la EC2 #2 se colgó con `t3.small` y pasó a `t3.medium` con swap persistente; y el
+`redirect_uri` de Cognito debía ser `http://localhost:3000/` y no
+`/redirect.html`.
+
+Límites que quedan: la entrega de SQS es "al menos una vez" y no hay DLQ; el
+`cliente` de cada orden es el `username` (UUID) del token, no un nombre; el
+frontend no consume `/api/reportes` ni `/api/auditoria` (sus paneles calculan
+en el cliente); el tope de heap del `docker-compose.yml` está en el repo pero no
+se aplicó en la EC2.
