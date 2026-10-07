@@ -50,7 +50,9 @@ cd EP2/despliegue
 ```
 
 Termina en `Todo OK`. Comprueba contenedores, respuesta de cada servicio,
-consulta directa a ambas bases, aislamiento entre bases y el recorrido por SQS.
+consulta directa a las tres bases, aislamiento entre bases y los avisos por SQS:
+crea una orden y comprueba que le llega el aviso a la sucursal, la despacha y
+comprueba que le llega el aviso al cliente, sin duplicados.
 Si dice `Permission denied`, usar `bash verificar.sh`.
 
 ## 4. Operar los contenedores
@@ -91,6 +93,7 @@ docker run -d --name bff --restart unless-stopped -p 8080:8080 \
   -e COGNITO_CLIENT_ID=37oq5a3q9ur02q13k6c8rg6mct \
   -e ORDERS_SERVICE_URL=http://172.31.39.91:8081 \
   -e CATALOG_SERVICE_URL=http://172.31.39.91:8082 \
+  -e NOTIFICACIONES_SERVICE_URL=http://172.31.39.91:8083 \
   -e REPORTES_SERVICE_URL=http://172.31.39.91:8084 \
   -e AUDITORIA_SERVICE_URL=http://172.31.39.91:8085 \
   cleanfresh/bff
@@ -121,6 +124,11 @@ docker run --rm -e PGPASSWORD="$ORDERS_DB_PASSWORD" postgres:16 psql -h $H -U $O
 
 docker run --rm -e PGPASSWORD="$CATALOG_DB_PASSWORD" postgres:16 psql -h $H -U $CATALOG_DB_USER -d catalog_db \
   -c "select id, nombre, precio from servicios"
+```
+
+```bash
+docker run --rm -e PGPASSWORD="$NOTIFICACIONES_DB_PASSWORD" postgres:16 psql -h $H -U $NOTIFICACIONES_DB_USER -d notificaciones_db \
+  -c "select id, tipo, destinatario_tipo, destinatario, numero_orden, leida from notificaciones order by id desc limit 5"
 ```
 
 Aislamiento (cada usuario solo entra a su base). Debe fallar con
@@ -171,6 +179,10 @@ lado que publica se ve en la consola de AWS y, indirectamente, en el aviso de
 
 Al sondear desde la consola, el mensaje queda "en vuelo" 30 s; no se pierde.
 
+Hay dos tipos de mensaje en la cola: `ORDEN_CREADA` (al crear una orden) y
+`ORDEN_LISTA` (cuando una orden pasa a *Despachado*). `notificaciones` los guarda
+como avisos en su base; ver 5.7 para verlos en la app.
+
 ### 5.4 Autenticación y roles (ACs 17–18)
 
 En `http://localhost:3000`, iniciar sesión con cada usuario de Cognito y cerrar
@@ -214,6 +226,38 @@ Test-NetConnection cleanfresh-db.cjeictyledp6.us-east-1.rds.amazonaws.com -Port 
 En cambio `Test-NetConnection 54.162.55.63 -Port 8080` sí responde: es la única
 entrada pública, detrás de API Gateway.
 
+### 5.7 Avisos al Operador y al Cliente (Spec 030)
+
+La cola ya no solo se ve en un log: cada mensaje se convierte en un aviso
+guardado y dirigido, que se ve en la campanita de la app.
+
+1. **Cliente:** inicia sesión y solicita un servicio (por ejemplo en Providencia).
+2. **Operador:** inicia sesión, deja "Sucursal en turno" en esa sucursal y abre la
+   campanita: aparece **"Pedido nuevo: ORD-00XX ..."**, resaltado y con contador.
+   Al abrirla queda como leído.
+3. **Operador:** abre la orden con **Ver → Ajustar estado → Despachado → Confirmar
+   cambio**. El cambio ahora se guarda en el backend, no solo en pantalla.
+4. **Cliente:** en unos segundos (la app consulta cada 15 s) su campanita muestra
+   **"Pedido listo: Tu pedido ORD-00XX (...) está listo"**.
+5. **Admin:** su campanita muestra todos los avisos en modo solo lectura (sin
+   contador: no marca nada como leído, para no borrarles los pendientes a los demás).
+
+Cada rol ve solo lo suyo: otro Cliente no ve el aviso de este pedido, y un
+Operador de otra sucursal no ve el del pedido nuevo.
+
+En la EC2 #2, los mismos avisos por la API de `notificaciones` y por la base:
+
+```bash
+curl -s "localhost:8083/api/notificaciones?sucursal=Providencia"      # avisos de la sucursal
+curl -s "localhost:8083/api/notificaciones?cliente=<username-del-cliente>"   # avisos de un cliente
+docker compose logs -f notificaciones                                  # "Notificación: ..." en vivo
+```
+
+Desacople, ahora con avisos: `docker compose stop notificaciones`, despachar una
+orden desde la app (el cambio de estado funciona igual), y al hacer
+`docker compose start notificaciones` el aviso aparece solo, porque esperó en la
+cola.
+
 ### 5.6 Reinicios (ACs 14–15)
 
 Con la consola: **Instance state → Reboot instance** en cada EC2. Tras ~2 minutos
@@ -229,6 +273,8 @@ Stop/Start si no hace falta: cambia la IP pública.
 | `orders`/`catalog` reinician en bucle | La base no existe o falla la conexión: `docker compose logs orders`. Ver `ARQUITECTURA.md` (GRANT en RDS) |
 | SSH sin respuesta tras reiniciar la EC2 #2 | Memoria agotada; ya está en `t3.medium` con swap persistente. Si pasa: Stop → Start |
 | `notificaciones` no registra avisos | Revisar `SQS_ENABLED=true`, `SQS_QUEUE_URL` y el `LabInstanceProfile` de la EC2 #2 |
+| La campanita no muestra avisos | Revisar que `notificaciones` esté `Up` y con `SQS_ENABLED=true`, y que el BFF tenga `NOTIFICACIONES_SERVICE_URL` (si falta, apunta a `localhost:8083`). Probar `curl localhost:8083/api/notificaciones` en la EC2 #2 |
+| Cambiar el estado de una orden da error en la app | Un Operador solo puede cambiar órdenes de la sucursal que tiene en turno (403 si es de otra). `orders` responde 400 si el estado no es válido |
 | 401 con token válido | El token expiró: cerrar sesión y volver a entrar |
 | Se cambió la IP pública de la EC2 #2 | Solo afecta al SSH; el BFF usa la IP privada `172.31.39.91` |
 

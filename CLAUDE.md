@@ -85,7 +85,7 @@ laboratorio, y en EP2 se recreó con otra arquitectura. El frontend sigue en
 |---|---|
 | EC2 #1 `cleanfresh-bff` (`t3.small`) | `54.162.55.63:8080`, BFF en Docker |
 | EC2 #2 `cleanfresh-ms` (`t3.medium`) | IP privada `172.31.39.91`; IP pública `3.92.55.203` (cambia con cada Stop/Start, solo se usa para SSH). 5 microservicios con `docker compose` en 8081–8085 |
-| RDS PostgreSQL 16 `cleanfresh-db` | `cleanfresh-db.cjeictyledp6.us-east-1.rds.amazonaws.com:5432`, bases `orders_db` y `catalog_db`, un usuario por servicio, sin acceso público |
+| RDS PostgreSQL 16 `cleanfresh-db` | `cleanfresh-db.cjeictyledp6.us-east-1.rds.amazonaws.com:5432`, bases `orders_db`, `catalog_db` y `notificaciones_db`, un usuario por servicio, sin acceso público |
 | SQS | cola Standard `cleanfresh-ordenes` (`us-east-1`); las EC2 usan el `LabInstanceProfile` |
 | API Gateway (`cleanfresh-api`, HTTP API) | `https://0ksy5y3586.execute-api.us-east-1.amazonaws.com` |
 | Ruta `ANY /{proxy+}` | → BFF, con JWT Authorizer de Cognito (audience = client id) |
@@ -214,16 +214,20 @@ src/main/java/com/cleanfresh/ms_cleanfresh_bff/
 │   └── SecurityConfig.java        # JWT validation, CORS, stateless, @EnableMethodSecurity
 ├── controller/
 │   ├── HealthController.java      # GET /api/health — requiere token (solo /actuator/health es público)
-│   ├── OrderController.java       # GET /api/orders, /api/orders/{id}, /api/orders/estado/{estado}
+│   ├── OrderController.java       # GET /api/orders, /api/orders/{id}, /api/orders/estado/{estado}; PUT /api/orders/{numeroOrden}/estado (Admin/Operador, Spec 030)
+│   ├── NotificacionController.java # GET /api/notificaciones, POST /api/notificaciones/leidas — filtrados por rol (Spec 030)
 │   ├── CatalogController.java     # GET /api/catalog, /api/catalog/{id}, /api/catalog/disponibles
 │   ├── ReportesController.java    # GET /api/reportes — solo Admin (EP2, respuesta fija)
 │   └── AuditoriaController.java   # GET /api/auditoria — solo Admin (EP2, respuesta fija)
 ├── service/
 │   ├── OrderService.java
-│   └── CatalogService.java
+│   ├── CatalogService.java
+│   ├── NotificacionService.java   # qué avisos ve cada rol (Spec 030)
+│   └── AccesoPorRol.java          # rol, username y sucursal en turno (compartido)
 ├── repository/
 │   ├── OrderRepository.java       # RestClient → ms-cleanfresh-orders:8081
-│   └── CatalogRepository.java     # RestClient → ms-cleanfresh-catalog:8082
+│   ├── CatalogRepository.java     # RestClient → ms-cleanfresh-catalog:8082
+│   └── NotificacionRepository.java # RestClient → ms-cleanfresh-notificaciones:8083
 └── dto/
     ├── OrderResponse.java
     └── ServiceResponse.java
@@ -248,7 +252,8 @@ src/
 ├── App.css                        # Estilos globales + bento grid
 ├── components/
 │   ├── AuthGuard.jsx               # Pantalla de login / protección de la app
-│   └── Navbar.jsx                  # Logo, nombre usuario, rol, botón logout
+│   ├── Navbar.jsx                  # Logo, nombre usuario, rol, botón logout
+│   └── NotificationBell.jsx        # Campanita de avisos con contador (Spec 030)
 ├── pages/
 │   └── BentoDashboard.jsx         # Dashboard bento único con tarjetas por rol
 └── services/
@@ -281,6 +286,19 @@ const isAdmin = roles.includes("Admin");
 
 ---
 
+### Avisos por rol (Spec 030)
+
+`orders` publica `ORDEN_CREADA` (al crear una orden) y `ORDEN_LISTA` (al pasar a
+`DESPACHADO`) en la cola SQS; `notificaciones` los guarda como avisos dirigidos en
+su base: el de pedido nuevo va a la **sucursal** de la orden (le llega al Operador
+que la tenga en turno) y el de pedido listo al **cliente** dueño (su `username`).
+El BFF decide qué ve cada rol (el Cliente solo lo suyo por el `username` del token;
+el Operador los de su sucursal en turno; el Admin todos, en solo lectura) y el
+frontend los muestra en la campanita. El cambio de estado de una orden ahora se
+guarda en el backend (`PUT /api/orders/{numeroOrden}/estado`).
+
+---
+
 ## Módulos del Sistema
 
 ### Servicios de lavandería (catálogo)
@@ -302,8 +320,8 @@ const isAdmin = roles.includes("Admin");
 $env:JAVA_HOME = "C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot"
 $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
 
-# (EP2) orders y catalog necesitan una base PostgreSQL: sin DB_URL/DB_USER/
-# DB_PASSWORD no arrancan. Ver el README de cada repo para levantar una
+# (EP2) orders, catalog y notificaciones necesitan una base PostgreSQL: sin
+# DB_URL/DB_USER/DB_PASSWORD no arrancan. Ver el README de cada repo para levantar una
 # con Docker (orders_db / catalog_db, un usuario por servicio).
 # (EP2) SQS: orders y notificaciones lo traen apagado (SQS_ENABLED=false); para
 # activarlo y probarlo en local con ElasticMQ, ver el README de cada uno.
@@ -444,6 +462,7 @@ de tocar algo ya resuelto.
 - [x] Migración a Cognito probada en vivo (Fix 027) — login, interceptor y creación de pedidos por Cliente confirmados funcionando; se corrigieron 3 problemas reales en el proceso (typo de `.env`, jar del BFF desactualizado, mismatch `username`/email en "Tus pedidos") y se agregó validación de `scope` en `CognitoTokenValidator`
 - [ ] El mapa `SUCURSAL_POR_OPERADOR` en `OrderService.java` (BFF) sigue con el valor viejo de Azure (`operador@cleanfreshchain.onmicrosoft.com`), así que no coincide con el `username` (UUID) del Operador de Cognito. No bloquea nada: el Operador filtra por su selector "Sucursal en turno" (`?sucursal=`), y el mapa solo es un respaldo
 - [x] Grupos de Cognito `Admin`/`Operador`/`Cliente` confirmados en vivo en EP2: el Admin ve Reportería/Auditoría y recibe 200 en `/api/reportes` y `/api/auditoria`; el Operador recibe 403 en ambas
+- [ ] **Seguridad:** `GET /api/orders` devuelve todas las órdenes a un Cliente; hoy es la pantalla la que filtra las suyas en el navegador. Debería filtrarse en el BFF por el `username` del token (como ya se hace con los avisos)
 - [ ] Texto "JWT Azure CIAM" en la tarjeta de estado del panel Admin: resto cosmético de la migración a Cognito
 - [ ] Verificar el 403 de `/api/reportes` y `/api/auditoria` con el rol Cliente (solo se probó Operador)
 - [x] Corregir que al hacer F5 con rol Admin/Operador no muestre vista de Cliente — ya no aplica el workaround original de MSAL; `react-oidc-context` no tiene ese problema de caché

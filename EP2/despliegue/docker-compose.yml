@@ -37,6 +37,9 @@ services:
     restart: unless-stopped
     environment:
       <<: *jvm
+      DB_URL: ${NOTIFICACIONES_DB_URL}
+      DB_USER: ${NOTIFICACIONES_DB_USER}
+      DB_PASSWORD: ${NOTIFICACIONES_DB_PASSWORD}
       SQS_ENABLED: ${SQS_ENABLED:-false}
       SQS_QUEUE_URL: ${SQS_QUEUE_URL:-}
       SQS_ENDPOINT: ${SQS_ENDPOINT:-}
