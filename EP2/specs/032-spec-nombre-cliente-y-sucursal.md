@@ -103,8 +103,19 @@ BFF simuladas (como en las Specs 030 y 031). **Falta el despliegue y la prueba e
 | 5 | Buscar por el nombre legible (`cliente@cleanfresh`) y por el identificador (`64888468-1021`) encuentra la orden, en Admin y Operador | ✅ Cumple (BFF simulado) |
 | 6 | Selector de sucursal visible en el catálogo del Cliente. En Providencia todo está disponible; en Maipú "Lavado de edredones" y "Servicio exprés" pasan a *No disponible* y su botón se desactiva, y "Lavado y secado" sigue disponible | ✅ Cumple (BFF simulado) |
 | 7 | La ventana de solicitud abre con la sucursal elegida (Maipú), deja cambiarla (Las Condes) y la orden se crea en la sucursal confirmada: el pedido sale con `{servicio, total, sucursal: "Las Condes"}`, sin `cliente` ni `clienteNombre` | ✅ Cumple (BFF simulado) |
-| 8 | Contratos sin cambios: `OrderRequest` y `OrderResponse` ganan un campo opcional al final y conservan el constructor anterior; 22 tests en `orders`, 20 en `notificaciones` y 44 en el BFF, todos en verde. La columna nueva (`cliente_nombre`, opcional) la agrega `ddl-auto: update` al desplegar; con H2 se prueba, con PostgreSQL se confirma en el AC 9 | ✅ Cumple (tests) |
-| 9 | Probado en el entorno real: un Cliente crea una orden y las listas y los avisos muestran su nombre legible; elige una sucursal distinta de Providencia y la orden queda ahí | ⏳ Pendiente de despliegue |
+| 8 | Contratos sin cambios: `OrderRequest` y `OrderResponse` ganan un campo opcional al final y conservan el constructor anterior; 22 tests en `orders`, 20 en `notificaciones` y 44 en el BFF, todos en verde. La columna nueva (`cliente_nombre`, opcional) la agrega `ddl-auto: update` al desplegar. Confirmado en vivo: se creó en PostgreSQL (RDS) como `character varying`, `nullable=YES`, y las 6 órdenes de ejemplo siguieron intactas devolviendo `clienteNombre: null` | ✅ Cumple |
+| 9 | Probado en el entorno real: un Cliente crea una orden y las listas y los avisos muestran su nombre legible; elige una sucursal distinta de Providencia y la orden queda ahí | ⏳ Desplegado; falta crear una orden como Cliente en la app (lo único que depende de un token real de Cognito) |
+
+**Despliegue (hecho, entorno real de AWS).** `orders` y `notificaciones` reconstruidos en la
+EC2 #2 y el BFF en la EC2 #1 con `COGNITO_DOMAIN` (el BFF responde `UP` y `401` sin token en
+`PUT /api/orders/{n}/estado` y `POST /api/orders`). Recorrido completo con una orden de prueba
+creada directamente en `orders` (cliente `uuid-prueba-0001`, `clienteNombre` "Prueba Nombre", Las Condes):
+
+- `orders` la guardó y devolvió `"cliente":"uuid-prueba-0001"` y `"clienteNombre":"Prueba Nombre"`.
+- Por SQS llegó el aviso a la sucursal: "Nuevo pedido ORD-0007: Planchado de **Prueba Nombre** en Las Condes (total $9.500)".
+- Al despacharla llegó el aviso al cliente, encontrado por el **identificador** (`?cliente=uuid-prueba-0001`);
+  buscando por el nombre legible no hay avisos, porque el destinatario no cambió.
+- La orden de prueba y sus avisos se borraron después y el contador volvió a 6: quedaron 6 órdenes y 0 avisos.
 
 Detalles de la prueba en el navegador: una primera comprobación del Cliente falló por un error de
 la propia prueba (exigía que ninguna orden mostrara el identificador, cuando la simulación incluye
