@@ -17,3 +17,4 @@ del índice de EP1; la plantilla está en
 | 029 | Spec | Arquitectura EP2: persistencia, contenedores, mensajería y nuevos microservicios | ✅ Verificado | [029-spec-arquitectura-ep2.md](029-spec-arquitectura-ep2.md) |
 | 030 | Spec | Notificaciones dirigidas por SQS: aviso al Operador y al Cliente | ✅ Verificado | [030-spec-notificaciones-dirigidas.md](030-spec-notificaciones-dirigidas.md) |
 | 031 | Spec | Búsqueda y navegación de órdenes (Operador y Admin) | ✅ Verificado (datos simulados) | [031-spec-busqueda-ordenes.md](031-spec-busqueda-ordenes.md) |
+| 032 | Spec | Nombre legible del cliente y sucursal elegible al solicitar | 🟡 Aprobada (en implementación) | [032-spec-nombre-cliente-y-sucursal.md](032-spec-nombre-cliente-y-sucursal.md) |

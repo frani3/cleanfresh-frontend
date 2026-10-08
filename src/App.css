@@ -1949,3 +1949,18 @@ input {
 .orders-empty {
   margin-top: 0.85rem;
 }
+
+/* =========================================================
+   Selector de sucursal del Cliente (Spec 032)
+   ========================================================= */
+
+.cliente-branch-picker {
+  max-width: 22rem;
+  margin-bottom: 1rem;
+}
+
+.cliente-branch-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}

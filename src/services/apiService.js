@@ -50,7 +50,11 @@ export async function getCatalog() {
 function mapOrder(item, actor) {
   return {
     id: item.numeroOrden,
-    customer: item.cliente,
+    // Spec 032: customer es lo que se muestra (nombre legible si el backend lo tiene, si no
+    // el identificador); customerId es el identificador estable de Cognito, que es con lo
+    // que se sabe de quién es la orden.
+    customer: item.clienteNombre || item.cliente,
+    customerId: item.cliente,
     branch: item.sucursal,
     service: item.servicio,
     price: item.total,

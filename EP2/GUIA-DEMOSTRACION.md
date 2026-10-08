@@ -91,6 +91,7 @@ docker rm -f bff
 docker run -d --name bff --restart unless-stopped -p 8080:8080 \
   -e COGNITO_ISSUER_URI=https://cognito-idp.us-east-1.amazonaws.com/us-east-1_Xj0EYCnUK \
   -e COGNITO_CLIENT_ID=37oq5a3q9ur02q13k6c8rg6mct \
+  -e COGNITO_DOMAIN=https://us-east-1xj0eycnuk.auth.us-east-1.amazoncognito.com \
   -e ORDERS_SERVICE_URL=http://172.31.39.91:8081 \
   -e CATALOG_SERVICE_URL=http://172.31.39.91:8082 \
   -e NOTIFICACIONES_SERVICE_URL=http://172.31.39.91:8083 \

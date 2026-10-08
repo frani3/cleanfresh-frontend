@@ -59,6 +59,7 @@ function useOrderFilters(orders, { initialStatus = "ALL" } = {}) {
         !text ||
         String(o.id).toLowerCase().includes(text) ||
         String(o.customer || "").toLowerCase().includes(text) ||
+        String(o.customerId || "").toLowerCase().includes(text) ||
         String(o.service || "").toLowerCase().includes(text);
       const matchesBranch = branch === "ALL" || o.branch === branch;
       return matchesText && matchesStatus(o, status) && matchesBranch;

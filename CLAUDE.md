@@ -130,6 +130,7 @@ REACT_APP_BFF_URL=https://0ksy5y3586.execute-api.us-east-1.amazonaws.com/api
 ```
 COGNITO_ISSUER_URI=https://cognito-idp.us-east-1.amazonaws.com/us-east-1_Xj0EYCnUK
 COGNITO_CLIENT_ID=37oq5a3q9ur02q13k6c8rg6mct
+COGNITO_DOMAIN=https://us-east-1xj0eycnuk.auth.us-east-1.amazoncognito.com   # opcional: nombre legible del cliente (Spec 032)
 ```
 
 ---
@@ -304,6 +305,12 @@ El BFF decide qué ve cada rol (el Cliente solo lo suyo por el `username` del to
 el Operador los de su sucursal en turno; el Admin todos, en solo lectura) y el
 frontend los muestra en la campanita. El cambio de estado de una orden ahora se
 guarda en el backend (`PUT /api/orders/{numeroOrden}/estado`).
+
+**Nombre legible (Spec 032):** una orden guarda `cliente` (el `username` de Cognito, un UUID, que
+dice de quién es) y, aparte, `clienteNombre` (el `name` o el `email` del usuario). El BFF lo pide a
+Cognito con el access token del usuario (`/oauth2/userInfo`, usa `COGNITO_DOMAIN`); nunca lo manda el
+navegador. Las pantallas y los avisos muestran `clienteNombre` y, si no existe, `cliente`. El
+Cliente ahora elige la sucursal en el catálogo y ve qué servicios hay disponibles allí.
 
 ---
 

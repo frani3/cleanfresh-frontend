@@ -247,19 +247,18 @@ function OrderLifecycleModal({ order, canEdit, onChangeStatus, onClose }) {
   );
 }
 
-function ServiceCard({ service, action }) {
+function ServiceCard({ service, action, branch }) {
+  // Spec 032: con `branch` (vista del Cliente) la disponibilidad es la de esa sucursal;
+  // sin ella, la de cualquier sucursal (Admin y Operador).
+  const available = branch ? Boolean(service.branches[branch]) : isServiceAvailableAnywhere(service);
   return (
     <div className="service2-card">
       <div className="service2-head">
         <span className="service2-icon">
           <WashingMachine size={16} />
         </span>
-        <span
-          className={`service2-avail ${
-            isServiceAvailableAnywhere(service) ? "service2-avail-yes" : "service2-avail-no"
-          }`}
-        >
-          {isServiceAvailableAnywhere(service) ? "Disponible" : "No disponible"}
+        <span className={`service2-avail ${available ? "service2-avail-yes" : "service2-avail-no"}`}>
+          {available ? "Disponible" : "No disponible"}
         </span>
       </div>
       <div>
@@ -830,9 +829,13 @@ function NewOrderModal({ services, onCreate, onClose }) {
    Modal "Solicitar servicio" (Catálogo — Cliente, Spec 024)
    ========================================================= */
 
-function RequestServiceModal({ service, onCreate, onClose }) {
+function RequestServiceModal({ service, initialBranch, onCreate, onClose }) {
   const availableBranches = BRANCHES.filter((b) => service.branches[b]);
-  const [branch, setBranch] = useState(availableBranches[0] || "");
+  // Spec 032: abre con la sucursal que el Cliente eligió en el catálogo (si el servicio está
+  // disponible ahí) y permite cambiarla entre las sucursales donde sí lo está.
+  const [branch, setBranch] = useState(
+    availableBranches.includes(initialBranch) ? initialBranch : availableBranches[0] || ""
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
@@ -1411,9 +1414,14 @@ function ClienteView({ services, orders, cognitoUsername, onRequestOrder }) {
   // el access token no trae name/email, solo username), así que acá se
   // compara contra eso, no contra el nombre/email de la sesión.
   const normalizedUsername = cognitoUsername.trim().toLowerCase();
+  // Spec 032: se compara por customerId (el identificador de Cognito), no por customer, que
+  // ahora puede ser el nombre legible. Las ordenes creadas solo en pantalla (sin customerId)
+  // siguen comparandose por customer.
   const myOrders = orders.filter(
-    (o) => o.customer.trim().toLowerCase() === normalizedUsername
+    (o) => (o.customerId ?? o.customer).trim().toLowerCase() === normalizedUsername
   );
+  // Spec 032: sucursal en la que el Cliente quiere su servicio (no se guarda entre sesiones).
+  const [branch, setBranch] = useState(BRANCHES[0]);
 
   return (
     <div className="bento2-grid role-cliente">
@@ -1468,15 +1476,35 @@ function ClienteView({ services, orders, cognitoUsername, onRequestOrder }) {
       </BentoCard>
 
       <BentoCard title="Catálogo de servicios" subtitle="Solicita un nuevo servicio" icon={Zap} className="card-cli-catalog">
+        <div className="form-field cliente-branch-picker">
+          <label className="form-label" htmlFor="cliente-sucursal">
+            Sucursal
+          </label>
+          <select
+            id="cliente-sucursal"
+            className="form-input form-select"
+            value={branch}
+            onChange={(e) => setBranch(e.target.value)}
+          >
+            {BRANCHES.map((b) => (
+              <option key={b} value={b}>
+                {b}
+              </option>
+            ))}
+          </select>
+          <p className="cliente-branch-hint">Elige dónde quieres tu servicio: el catálogo muestra qué hay disponible allí.</p>
+        </div>
         <div className="service2-grid">
           {services.map((s) => (
             <ServiceCard
               key={s.id}
               service={s}
+              branch={branch}
               action={
                 <button
                   className="btn2 btn2-primary"
-                  disabled={!isServiceAvailableAnywhere(s)}
+                  disabled={!s.branches[branch]}
+                  title={s.branches[branch] ? undefined : `No disponible en ${branch}`}
                   onClick={() => setRequestingService(s)}
                 >
                   <Plus size={11} /> Solicitar
@@ -1489,6 +1517,7 @@ function ClienteView({ services, orders, cognitoUsername, onRequestOrder }) {
         {requestingService && (
           <RequestServiceModal
             service={requestingService}
+            initialBranch={branch}
             onCreate={onRequestOrder}
             onClose={() => setRequestingService(null)}
           />
