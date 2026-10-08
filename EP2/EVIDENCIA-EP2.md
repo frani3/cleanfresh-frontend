@@ -278,3 +278,48 @@ Incidente de la propia prueba: en la primera ejecución una comprobación falló
 contador de SQS es **aproximado** y fluctúa mientras se consume (mostró 0 y, una lectura
 después, 1). El sistema estaba bien; se corrigió el script para esperar a que el contador se
 estabilice en vez de fiarse de una sola lectura, y la segunda ejecución pasó completa.
+
+## 9. Nombre legible del cliente y sucursal elegible (Spec 032)
+
+Verificación en el entorno real de AWS, después de desplegar `orders`, `notificaciones` y el BFF
+(este con la variable nueva `COGNITO_DOMAIN`). El detalle por criterio está en
+[`specs/032-spec-nombre-cliente-y-sucursal.md`](specs/032-spec-nombre-cliente-y-sucursal.md).
+
+### 9.1 Limpieza de la base
+
+Antes de probar se borraron las 8 órdenes de prueba (`ORD-0007` a `ORD-0014`) y los 9 avisos, y se
+reinició el contador: quedaron las 6 órdenes de ejemplo y la siguiente orden fue `ORD-0007`.
+
+### 9.2 Despliegue y recorrido con una orden de prueba
+
+- Columna nueva en PostgreSQL (RDS): `cliente_nombre (character varying, nullable=YES)`, creada por
+  `ddl-auto: update`; las 6 órdenes de ejemplo siguieron intactas y devolvieron `clienteNombre: null`.
+- Orden de prueba creada directamente en `orders` con un nombre legible: el aviso a la sucursal salió
+  como "Nuevo pedido ORD-0007: Planchado de **Prueba Nombre** en Las Condes (total $9.500)"; al
+  despacharla, el aviso al cliente llegó por su identificador (buscar por el nombre legible no
+  devuelve nada, porque el destinatario no cambió). La orden de prueba se borró después.
+
+### 9.3 Orden real de un Cliente, con token real de Cognito
+
+Un Cliente creó un pedido desde la app, eligiendo en el catálogo una sucursal distinta de la de
+siempre. Estado leído directamente en la base y en `notificaciones`:
+
+```
+== ordenes
+ numero_orden |               cliente                |     cliente_nombre     |  servicio |  estado |  sucursal
+ ORD-0007     | 64888468-1021-70ae-1c1b-36e6f67b3175 | cliente@cleanfresh.com | Planchado | CREADO  | Las Condes
+
+== avisos
+     tipo     | destinatario_tipo | destinatario | numero_orden | leida | mensaje
+ ORDEN_CREADA | SUCURSAL          | Las Condes   | ORD-0007     | f     | Nuevo pedido ORD-0007: Planchado de cliente@cleanfresh.com en Las Condes (total $15.000)
+```
+
+Lo que demuestra:
+
+- **Nombre legible:** `cliente` conserva el identificador de Cognito (de quién es la orden) y
+  `cliente_nombre` guarda el correo, que el BFF pidió a Cognito (`/oauth2/userInfo`) con el access
+  token del propio usuario; el navegador no envía ni `cliente` ni `clienteNombre`. El usuario de prueba
+  no tiene el atributo `name`, por eso se usó el correo.
+- **Sucursal:** la orden quedó en Las Condes, elegida en el selector del catálogo. El aviso fue a esa
+  sucursal, no a Providencia (un Operador lo ve con "Sucursal en turno" = Las Condes).
+- **Sin fallos:** el log del BFF no registró ningún error al consultar a Cognito.
