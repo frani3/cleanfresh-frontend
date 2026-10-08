@@ -231,3 +231,50 @@ Operador con sus avisos): por adjuntar en `EP2/capturas/`.
   prueba que la API Gateway lo alcanza).
 - `ORD-0011` parecía "no avisar" porque seguía en `CREADO`: el cambio a *Despachado* aún no se
   había hecho. Sin defecto de código.
+
+## 8. Desacople: la solicitud sobrevive a la caída de notificaciones
+
+Caso que pidió el profesor: el cliente solicita un servicio, el mensaje llega a SQS y el
+microservicio de notificaciones está caído; al levantarse, la solicitud debe seguir ahí y
+llegar. Se ejecutó `./demo-desacople.sh` en la EC2 #2 (entorno real de AWS):
+
+```
+[1] Estado inicial: todo en marcha y la cola vacía
+       notificaciones Up 41 seconds
+       orders Up About an hour
+       Cola SQS cleanfresh-ordenes -> mensajes disponibles: 0, en proceso: 0
+
+[2] Se cae el microservicio de notificaciones
+  OK   notificaciones detenido (sin contenedor en ejecución)
+  OK   su puerto 8083 ya no responde
+
+[3] El cliente solicita un servicio (POST /api/orders) con notificaciones caído
+  OK   la solicitud se aceptó: ORD-0014 creada (HTTP 201), aunque notificaciones está caído
+  OK   ORD-0014 está guardada en la base de orders (RDS)
+
+[4] El mensaje espera en la cola de SQS (nadie lo consume todavía)
+       Cola SQS cleanfresh-ordenes -> mensajes disponibles: 1, en proceso: 0
+  OK   la cola pasó de 0 a 1 mensaje(s): el pedido ORD-0014 está esperando en SQS
+       el aviso de ORD-0014 todavía no existe (no hay quien lo procese)
+
+[5] Se levanta de nuevo el microservicio de notificaciones
+       esperando a que arranque.....
+  OK   notificaciones volvió a responder
+
+[6] Al volver, consume el mensaje que esperaba y genera el aviso
+  OK   aviso generado para el Operador de Providencia: Nuevo pedido ORD-0014: Lavado en seco de Demo-Desacople-025609 en Providencia (total $45.000)
+       Cola SQS cleanfresh-ordenes -> mensajes disponibles: 0, en proceso: 0
+  OK   la cola volvió a 0 mensaje(s): el pedido se consumió y se eliminó de SQS
+  OK   un solo aviso para ORD-0014 (sin duplicados)
+
+Desacople demostrado: la solicitud sobrevivió a la caída y llegó cuando el servicio volvió.
+```
+
+Lo que demuestra: con el consumidor caído, `POST /api/orders` sigue respondiendo `201` y la
+orden queda en la RDS; el mensaje espera en SQS (la cola pasó de 0 a 1, leído directamente de
+AWS); al levantarse `notificaciones` lo consume, genera un único aviso y la cola vuelve a 0.
+
+Incidente de la propia prueba: en la primera ejecución una comprobación falló porque el
+contador de SQS es **aproximado** y fluctúa mientras se consume (mostró 0 y, una lectura
+después, 1). El sistema estaba bien; se corrigió el script para esperar a que el contador se
+estabilice en vez de fiarse de una sola lectura, y la segunda ejecución pasó completa.

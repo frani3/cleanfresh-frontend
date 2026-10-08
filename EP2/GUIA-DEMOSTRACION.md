@@ -264,6 +264,53 @@ Con la consola: **Instance state → Reboot instance** en cada EC2. Tras ~2 minu
 `docker ps` debe mostrar los contenedores `Up` sin intervención. No usar
 Stop/Start si no hace falta: cambia la IP pública.
 
+### 5.8 Desacople: la solicitud sobrevive a la caída de notificaciones
+
+Es el caso que hay que mostrar: el cliente solicita un servicio, el mensaje llega a SQS,
+**pero el microservicio de notificaciones está caído**. La solicitud no se pierde: queda
+guardada, el mensaje espera en la cola y, cuando `notificaciones` vuelve a levantarse, lo
+recibe y genera el aviso.
+
+**Automático (recomendado), en la EC2 #2:**
+
+```bash
+cd ~/cleanfresh/cleanfresh-frontend && git pull
+cd EP2/despliegue
+./demo-desacople.sh
+```
+
+El script va narrando seis pasos y verifica cada uno:
+
+1. Estado inicial: todo `Up` y la cola vacía (lee los mensajes directamente de AWS).
+2. Detiene `notificaciones` (la "caída") y comprueba que su puerto ya no responde.
+3. Crea la solicitud del cliente (`POST /api/orders`): responde **201** y la orden queda
+   guardada en la RDS aunque notificaciones esté caído.
+4. Muestra que la cola pasó de 0 a **1 mensaje esperando** en SQS y que todavía no existe el aviso.
+5. Levanta `notificaciones` de nuevo.
+6. Comprueba que consumió el mensaje que esperaba, que apareció el aviso para el Operador de
+   Providencia, que la cola volvió a 0 y que hay un solo aviso (sin duplicados).
+
+Termina con `Desacople demostrado: la solicitud sobrevivió a la caída y llegó cuando el
+servicio volvió.` Deja `notificaciones` levantado y una orden de prueba "Demo-Desacople-…".
+Si dice `Permission denied`, usar `bash demo-desacople.sh`.
+
+**Manual, mostrando la consola de AWS** (para enseñar el mensaje dentro de la cola):
+
+1. En la EC2 #2: `docker compose stop notificaciones`.
+2. En la app, como **Cliente**, solicitar un servicio. Funciona igual: la orden aparece en
+   "Tus pedidos".
+3. Consola de AWS → **SQS → `cleanfresh-ordenes`**: *Mensajes disponibles = 1*. Con **Enviar y
+   recibir mensajes → Sondear mensajes** se ve el JSON (`tipo: ORDEN_CREADA`, `numeroOrden`,
+   `cliente`, `servicio`, `sucursal`, `total`, `fecha`). Al sondear, el mensaje queda "en vuelo"
+   30 s; no se pierde.
+4. En la app, como **Operador**: la campanita todavía **no** muestra ese pedido.
+5. `docker compose start notificaciones`. A los pocos segundos: en los logs
+   (`docker compose logs -f notificaciones`) aparece `Notificación: Nuevo pedido ORD-00XX ...`,
+   en SQS *Mensajes disponibles* vuelve a 0 y la campanita del Operador (consulta cada 15 s)
+   muestra "Pedido nuevo".
+
+Nota: el contador de SQS es aproximado y puede tardar unos segundos en reflejar el cambio.
+
 ## 6. Problemas frecuentes
 
 | Síntoma | Causa y solución |
