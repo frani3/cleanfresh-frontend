@@ -83,13 +83,21 @@ laboratorio, y en EP2 se recreó con otra arquitectura. El frontend sigue en
 
 | Recurso | Valor |
 |---|---|
-| EC2 #1 `cleanfresh-bff` (`t3.small`) | `54.162.55.63:8080`, BFF en Docker |
-| EC2 #2 `cleanfresh-ms` (`t3.medium`) | IP privada `172.31.39.91`; IP pública `3.92.55.203` (cambia con cada Stop/Start, solo se usa para SSH). 5 microservicios con `docker compose` en 8081–8085 |
+| EC2 #1 `cleanfresh-bff` (`t3.small`) | **Elastic IP `3.213.118.143`**:8080 (IP fija), BFF en Docker; IP privada `172.31.33.129` |
+| EC2 #2 `cleanfresh-ms` (`t3.medium`) | IP privada `172.31.39.91`; IP pública variable (cambia al apagar el laboratorio; última conocida `52.90.146.243`, solo se usa para SSH). 5 microservicios con `docker compose` en 8081–8085 |
 | RDS PostgreSQL 16 `cleanfresh-db` | `cleanfresh-db.cjeictyledp6.us-east-1.rds.amazonaws.com:5432`, bases `orders_db`, `catalog_db` y `notificaciones_db`, un usuario por servicio, sin acceso público |
 | SQS | cola Standard `cleanfresh-ordenes` (`us-east-1`); las EC2 usan el `LabInstanceProfile` |
 | API Gateway (`cleanfresh-api`, HTTP API) | `https://0ksy5y3586.execute-api.us-east-1.amazonaws.com` |
 | Ruta `ANY /{proxy+}` | → BFF, con JWT Authorizer de Cognito (audience = client id) |
 | Ruta `OPTIONS /{proxy+}` | → BFF, sin authorizer (el preflight no manda token) |
+
+**IPs al apagar el laboratorio:** las IPs públicas normales cambian cuando el
+laboratorio detiene las instancias. El BFF tiene una **Elastic IP** (`3.213.118.143`)
+justamente para que la API Gateway no apunte a una IP vieja: las integraciones `ANY` y
+`OPTIONS` de la API Gateway usan `http://3.213.118.143:8080/{proxy}`. La EC2 #2 no la
+necesita (el BFF la alcanza por su IP privada `172.31.39.91`). Una Elastic IP sin asociar
+cobra: liberarla al terminar la evaluación. Al reiniciar, los contenedores arrancan solos
+(`restart: unless-stopped`).
 
 Grupos de seguridad: `cleanfresh-sg-bff` (8080 público, 22 desde la IP del
 autor), `cleanfresh-sg-ms` (8081–8085 solo desde `cleanfresh-sg-bff`) y
@@ -460,6 +468,7 @@ de tocar algo ya resuelto.
 
 - [x] Conectar microservicios a **base de datos cloud** con entidades JPA y repositorios Spring Data — hecho en EP2 (Spec 029): `orders` y `catalog` sobre PostgreSQL en RDS, verificado en vivo
 - [x] Migración a Cognito probada en vivo (Fix 027) — login, interceptor y creación de pedidos por Cliente confirmados funcionando; se corrigieron 3 problemas reales en el proceso (typo de `.env`, jar del BFF desactualizado, mismatch `username`/email en "Tus pedidos") y se agregó validación de `scope` en `CognitoTokenValidator`
+- [ ] **Al terminar la evaluación:** liberar la Elastic IP `3.213.118.143` y apagar o eliminar las 2 EC2, la RDS y la API Gateway (cobran mientras existan)
 - [ ] El mapa `SUCURSAL_POR_OPERADOR` en `OrderService.java` (BFF) sigue con el valor viejo de Azure (`operador@cleanfreshchain.onmicrosoft.com`), así que no coincide con el `username` (UUID) del Operador de Cognito. No bloquea nada: el Operador filtra por su selector "Sucursal en turno" (`?sucursal=`), y el mapa solo es un respaldo
 - [x] Grupos de Cognito `Admin`/`Operador`/`Cliente` confirmados en vivo en EP2: el Admin ve Reportería/Auditoría y recibe 200 en `/api/reportes` y `/api/auditoria`; el Operador recibe 403 en ambas
 - [ ] **Seguridad:** `GET /api/orders` devuelve todas las órdenes a un Cliente; hoy es la pantalla la que filtra las suyas en el navegador. Debería filtrarse en el BFF por el `username` del token (como ya se hace con los avisos)

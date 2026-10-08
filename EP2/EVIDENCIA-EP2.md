@@ -136,3 +136,98 @@ Todo OK
 Esto demuestra en vivo: los 5 servicios en Docker, los datos en PostgreSQL
 (RDS) con una base y un usuario por servicio, el aislamiento entre bases, el
 recorrido completo por SQS y la persistencia tras un reinicio.
+
+## 7. Avisos dirigidos por SQS (Spec 030)
+
+Verificación en el entorno real de AWS. El detalle por criterio está en
+[`specs/030-spec-notificaciones-dirigidas.md`](specs/030-spec-notificaciones-dirigidas.md).
+
+### 7.1 Despliegue
+
+- En la RDS: `CREATE USER notificaciones_user`, `GRANT notificaciones_user TO postgres`,
+  `CREATE DATABASE notificaciones_db OWNER notificaciones_user` y `REVOKE CONNECT ... FROM PUBLIC`
+  (respuestas `CREATE ROLE`, `GRANT ROLE`, `CREATE DATABASE`, `REVOKE`).
+- EC2 #2: `git pull` de los repos y `docker compose up -d --build`; `notificaciones` responde
+  `200` en `/api/notificaciones` y `orders` responde `404` al cambiar el estado de una orden
+  inexistente (prueba de que corre el endpoint nuevo).
+- EC2 #1: imagen del BFF reconstruida y contenedor recreado con `NOTIFICACIONES_SERVICE_URL`;
+  `bff Up`, `/actuator/health` en `UP`, y `401` sin token en `PUT /api/orders/{n}/estado` y en
+  `GET /api/notificaciones`.
+
+### 7.2 Verificación automática (`verificar.sh --reiniciar`, EC2 #2)
+
+```
+3) Bases de datos en la RDS (consulta directa con el usuario de cada servicio)
+  OK   orders_db: 9 órdenes, última ORD-0009
+  OK   catalog_db: 5 servicios, 20 filas de disponibilidad por sucursal
+  OK   notificaciones_db: 0 avisos (0 sin leer)
+4) Aislamiento: cada usuario solo entra a su base
+  OK   orders_user NO puede entrar a catalog_db
+  OK   catalog_user NO puede entrar a orders_db
+  OK   orders_user NO puede entrar a notificaciones_db
+  OK   notificaciones_user NO puede entrar a orders_db
+5) Avisos por SQS: pedido nuevo -> Operador; pedido listo -> Cliente
+  OK   orden creada: ORD-0010 (cliente Verificacion-181626, sucursal Providencia)
+  OK   aviso al Operador de Providencia: Nuevo pedido ORD-0010: Planchado de Verificacion-181626 en Providencia (total $9.500)
+  OK   el Cliente aún no tiene avisos (la orden no está lista)
+  OK   orden ORD-0010 pasada a DESPACHADO (HTTP 200)
+  OK   un estado inválido se rechaza (HTTP 400)
+  OK   aviso al Cliente: Tu pedido ORD-0010 (Planchado) está listo
+  OK   despachar dos veces no duplica el aviso (1 aviso)
+  OK   marcar leídos solo afecta a ese Cliente (1 aviso)
+  OK   orders sin errores de publicación
+6) Persistencia tras reiniciar orders y notificaciones
+  OK   órdenes antes: 10, después: 10
+  OK   avisos antes: 2, después: 2
+
+Todo OK
+```
+
+(El script completo también comprueba los 5 contenedores y las respuestas de cada servicio;
+aquí se muestran las secciones propias de la Spec 030.)
+
+### 7.3 Cambio de estado con token real
+
+Desde la consola del navegador, con la sesión del Operador (`PUT` por API Gateway):
+
+```
+fetch('https://<api-gateway>/api/orders/ORD-0011/estado?sucursal=Providencia', { method: 'PUT', ... {estado:'DESPACHADO'} })
+HTTP 200 {"id":11,"numeroOrden":"ORD-0011","cliente":"64888468-...","servicio":"Lavado en seco",
+          "estado":"DESPACHADO","fecha":"2026-10-07","total":45000.0,"sucursal":"Providencia"}
+```
+
+### 7.4 Flujo con los tres roles en la app
+
+Estado leído directamente en los servicios (EC2 #2) después de usar la app:
+
+```
+== ordenes de la cliente 64888468
+  ORD-0008 CREADO Providencia
+  ORD-0011 DESPACHADO Providencia          <- despachada con la llamada manual de 7.3
+  ORD-0012 DESPACHADO Providencia          <- despachada con el botón del panel del Operador
+== avisos de esa cliente
+  7 ORDEN_LISTA ORD-0012 leida= False | Tu pedido ORD-0012 (Lavado en seco) está listo
+  6 ORDEN_LISTA ORD-0011 leida= True  | Tu pedido ORD-0011 (Lavado en seco) está listo
+== avisos de Providencia
+  5 ORDEN_CREADA ORD-0012 leida= True | Nuevo pedido ORD-0012: Lavado en seco de 64888468-... en Providencia (total $45.000)
+  3 ORDEN_CREADA ORD-0011 leida= True | Nuevo pedido ORD-0011: Lavado en seco de 64888468-... en Providencia (total $45.000)
+  1 ORDEN_CREADA ORD-0010 leida= True | Nuevo pedido ORD-0010: Planchado de Verificacion-181626 en Providencia (total $9.500)
+```
+
+Lo que demuestra: la cliente creó `ORD-0011` y `ORD-0012` y a la sucursal le llegó cada aviso
+de pedido nuevo (leídos: el Operador abrió su campanita); al despacharlas, a la cliente le
+llegó el aviso de pedido listo (el de `ORD-0011` figura leído porque ella abrió la campanita;
+el de `ORD-0012` seguía sin leer). En ambos servicios los logs no tenían errores.
+
+Capturas de las campanitas de los tres roles (Admin en solo lectura sin contador, Cliente y
+Operador con sus avisos): por adjuntar en `EP2/capturas/`.
+
+### 7.5 Incidentes del despliegue
+
+- Al apagar y encender el laboratorio cambiaron las IPs públicas. La API Gateway seguía
+  apuntando a la IP vieja del BFF; se reservó una Elastic IP para el BFF y se actualizaron
+  las dos integraciones (`ANY` y `OPTIONS`). El preflight `OPTIONS` por API Gateway respondió
+  `200` con `access-control-allow-origin: http://localhost:3000` (lo genera el BFF, así que
+  prueba que la API Gateway lo alcanza).
+- `ORD-0011` parecía "no avisar" porque seguía en `CREADO`: el cambio a *Despachado* aún no se
+  había hecho. Sin defecto de código.

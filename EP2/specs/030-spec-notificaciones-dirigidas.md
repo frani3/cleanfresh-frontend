@@ -1,7 +1,7 @@
 ---
 id: 030
 type: spec
-status: approved
+status: verified
 ---
 
 # Spec 030 — Notificaciones dirigidas por SQS: aviso al Operador y al Cliente
@@ -204,4 +204,42 @@ refleja un cambio de estado si el backend lo aceptó. Componente nuevo:
 plantilla ya estaba roto (usa `@testing-library`, que no está instalado) y no se
 tocó; la verificación de esta fase fue con el navegador, no con tests unitarios.
 
-Fase 5: ⏳ pendiente.
+**Fase 5 — AWS (hecha, en vivo).** Desplegado en el entorno real: `notificaciones_db`
+en la RDS, los servicios con `docker compose` en la EC2 #2, el BFF en la EC2 #1 y
+el frontend local contra API Gateway. Comandos y salidas en
+[`EP2/EVIDENCIA-EP2.md`](../EVIDENCIA-EP2.md) (sección 7).
+
+| # | AC | Estado |
+|---|---|---|
+| 4 | `notificaciones_db` y `notificaciones_user` creados en la RDS; `verificar.sh` comprueba el aislamiento en cuatro direcciones (ninguno de los otros usuarios entra a `notificaciones_db` y `notificaciones_user` no entra a `orders_db`) | ✅ Cumple |
+| 5 | Avisos dirigidos guardados desde SQS: "Nuevo pedido" a la sucursal (`ORD-0010` por `verificar.sh`; `ORD-0011` y `ORD-0012` desde la app) y "Pedido listo" al cliente dueño (`ORD-0010`, `ORD-0011`, `ORD-0012`) | ✅ Cumple |
+| 6 | Despachar dos veces la misma orden dejó un solo aviso (`verificar.sh`) | ✅ Cumple |
+| 7 | `verificar.sh`: marcar como leídos afectó solo al cliente indicado. En la app, el aviso de `ORD-0011` quedó leído al abrir la campanita la cliente, y el de `ORD-0012` seguía sin leer hasta que ella la abriera | ✅ Cumple |
+| 8 | Cambio de estado con token real de Cognito por API Gateway → BFF → `orders`: `200` con la llamada manual (`ORD-0011`) y también desde el botón del panel del Operador (`ORD-0012`). Con sucursal ajena (403) y sin token (401) el BFF solo está probado con tests y con `curl` sin token | ✅ Cumple (403 solo por tests) |
+| 9 | La cliente ve solo sus avisos (los "Pedido listo" de sus órdenes, no los "Nuevo pedido" de la sucursal), el Operador los de la sucursal en turno y el Admin todos en solo lectura (capturas). Que un Cliente no pueda ver los de otro mandando parámetros está probado solo por tests | ✅ Cumple |
+| 10 | El Operador cambia el estado desde la pantalla y se guarda en el backend (`ORD-0012` quedó `DESPACHADO` en `orders`). El caso de error de la pantalla (banner rojo) se probó con la app simulada, no en vivo | ✅ Cumple |
+| 11 | Campanita en las tres vistas con el backend real (capturas de Admin, Cliente y Operador). El Operador y la cliente abrieron la campanita y sus avisos quedaron marcados como leídos | ✅ Cumple |
+| 12 | Flujo completo con los tres roles en el entorno real: la cliente pide → el Operador recibe el aviso de pedido nuevo → el pedido se despacha → la cliente recibe el de pedido listo (`ORD-0011` y `ORD-0012`) | ✅ Cumple |
+| 13 | Contratos de EP1/029 sin cambios; la app sigue funcionando con los endpoints de siempre y los tests existentes siguen en verde | ✅ Cumple |
+| 14 | Con SQS apagado (local) `orders` y `notificaciones` siguen funcionando (`SQS_ENABLED=false` por defecto) | ✅ Cumple |
+| 15 | `notificaciones_db` creada con su usuario; `docker-compose.yml`, `verificar.sh` y la guía actualizados. `verificar.sh --reiniciar` dio `Todo OK` en AWS | ✅ Cumple |
+| 16 | Evidencia en `EP2/EVIDENCIA-EP2.md` (sección 7): avisos en la base, en la app y la verificación automática | ✅ Cumple |
+
+Problemas reales al desplegar:
+
+- **Las IPs públicas cambian cuando se apaga el laboratorio.** Al volver a encenderlo, la
+  IP del BFF cambió y la API Gateway seguía apuntando a la vieja (la app habría
+  dado errores 5xx). Se reservó una **Elastic IP** para el BFF y se actualizaron las
+  **dos** integraciones de la API Gateway (`ANY` y `OPTIONS`). La EC2 #2 no la necesita:
+  el BFF la alcanza por su IP privada y la pública solo sirve para SSH.
+- **Una prueba de "persistencia" que no probó nada**, ya registrada en la fase 2:
+  `pkill` no existe en esta shell y el error estaba oculto.
+- **Una orden que "no avisaba":** `ORD-0011` seguía en `CREADO` porque el cambio a
+  *Despachado* no se había hecho (no hubo defecto de código); al despacharla se generó su
+  aviso. El botón se comprobó después con `ORD-0012`.
+
+Límites que quedan: la entrega de SQS sigue siendo "al menos una vez" y sin cola de
+mensajes fallidos; el nombre del cliente en los avisos es el `username` del token
+(UUID); los avisos se consultan cada 15 s, sin tiempo real; `GET /api/orders` sigue
+devolviendo todas las órdenes a un Cliente (pendiente anotado en `CLAUDE.md`);
+y no se probó en vivo el 403 de un Operador sobre una orden de otra sucursal.

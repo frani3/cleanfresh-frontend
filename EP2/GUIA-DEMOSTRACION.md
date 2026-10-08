@@ -9,12 +9,12 @@ tokens.
 
 | Recurso | Valor |
 |---|---|
-| EC2 #1 `cleanfresh-bff` | `54.162.55.63` (BFF en Docker, `:8080`) |
-| EC2 #2 `cleanfresh-ms` | IP privada `172.31.39.91`; IP pública **cambia con cada Stop/Start** (última conocida: `3.92.55.203`; la actual se ve en la consola de EC2) |
+| EC2 #1 `cleanfresh-bff` | **IP fija (Elastic IP) `3.213.118.143`** (BFF en Docker, `:8080`); IP privada `172.31.33.129` |
+| EC2 #2 `cleanfresh-ms` | IP privada `172.31.39.91`; IP pública **cambia con cada Stop/Start** (última conocida: `52.90.146.243`; la actual se ve en la consola de EC2) |
 | API Gateway | `https://0ksy5y3586.execute-api.us-east-1.amazonaws.com` |
 | Frontend | `http://localhost:3000` (se abre siempre con ese origen) |
 | Cola SQS | `cleanfresh-ordenes` (`us-east-1`) |
-| RDS | `cleanfresh-db`, bases `orders_db` y `catalog_db` |
+| RDS | `cleanfresh-db`, bases `orders_db`, `catalog_db` y `notificaciones_db` |
 
 Carpeta de trabajo en la EC2 #2: `~/cleanfresh/cleanfresh-frontend/EP2/despliegue`.
 
@@ -22,7 +22,7 @@ Carpeta de trabajo en la EC2 #2: `~/cleanfresh/cleanfresh-frontend/EP2/despliegu
 
 1. En la consola de AWS: las dos EC2 en *Running* con *2/2 checks passed*, la RDS
    en *Available*.
-2. Si la EC2 #2 se detuvo y arrancó, anotar su **nueva IP pública** (la privada no cambia).
+2. Si el laboratorio se apagó y se volvió a encender, anotar la **nueva IP pública de la EC2 #2** (la privada y la del BFF no cambian: el BFF tiene Elastic IP). Si en algún momento la IP del BFF cambiara, hay que actualizar las **dos** integraciones de la API Gateway (`ANY` y `OPTIONS`) a `http://<IP-DEL-BFF>:8080/{proxy}`.
 3. Levantar el frontend en la PC: `npm start` en `cleanfresh-frontend` y abrir
    `http://localhost:3000`.
 4. Verificar el sistema completo en la EC2 #2 (ver 3).
@@ -33,7 +33,7 @@ En PowerShell, con la llave `.pem` de la key pair:
 
 ```powershell
 ssh -i "C:\Users\franc\Downloads\key.pem" ec2-user@<IP-PUBLICA-EC2-2>   # microservicios
-ssh -i "C:\Users\franc\Downloads\key.pem" ec2-user@54.162.55.63         # BFF
+ssh -i "C:\Users\franc\Downloads\key.pem" ec2-user@3.213.118.143        # BFF (IP fija)
 ```
 
 El puerto 22 solo acepta tu IP pública. Si hay timeout, tu IP cambió: editar la

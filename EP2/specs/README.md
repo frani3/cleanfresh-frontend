@@ -15,4 +15,4 @@ del índice de EP1; la plantilla está en
 | # | Tipo | Título | Estado | Archivo |
 |---|------|--------|--------|---------|
 | 029 | Spec | Arquitectura EP2: persistencia, contenedores, mensajería y nuevos microservicios | ✅ Verificado | [029-spec-arquitectura-ep2.md](029-spec-arquitectura-ep2.md) |
-| 030 | Spec | Notificaciones dirigidas por SQS: aviso al Operador y al Cliente | 🟡 Aprobada (en implementación) | [030-spec-notificaciones-dirigidas.md](030-spec-notificaciones-dirigidas.md) |
+| 030 | Spec | Notificaciones dirigidas por SQS: aviso al Operador y al Cliente | ✅ Verificado | [030-spec-notificaciones-dirigidas.md](030-spec-notificaciones-dirigidas.md) |
