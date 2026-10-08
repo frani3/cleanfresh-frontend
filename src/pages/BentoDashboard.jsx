@@ -28,10 +28,11 @@ import {
   RotateCcw,
   Trash2,
   X,
-  RefreshCw,
 } from "lucide-react";
 import { getHealth, getCatalog, getOrders, createOrder, updateOrderStatus } from "../services/apiService";
 import NotificationBell from "../components/NotificationBell";
+import OrderFilters, { OrderListFooter } from "../components/OrderFilters";
+import useOrderFilters from "../hooks/useOrderFilters";
 
 /* =========================================================
    Datos mock — en producción vendrían de las APIs de
@@ -49,6 +50,14 @@ const STATUS_LABELS = {
   ENTREGADO: "Entregado",
   CANCELADO: "Cancelado",
 };
+
+// Opciones del filtro de estado de las listas de órdenes (Spec 031). Incluye
+// Cancelado, que el flujo normal no recorre pero sí existe en los datos.
+const ORDER_STATUS_OPTIONS = [...STATUS_FLOW, "CANCELADO"].map((s) => ({
+  value: s,
+  label: STATUS_LABELS[s],
+}));
+const OPERADOR_STATUS_OPTIONS = [{ value: "ACTIVE", label: "Activas (en curso)" }, ...ORDER_STATUS_OPTIONS];
 
 function isServiceAvailableAnywhere(service) {
   return Object.values(service.branches).some(Boolean);
@@ -926,22 +935,8 @@ function AdminView({
   const [catalogBranch, setCatalogBranch] = useState(BRANCHES[0]);
   const [activeTab, setActiveTab] = useState("orders");
 
-  const [orderQuery, setOrderQuery] = useState("");
-  const [orderStatusFilter, setOrderStatusFilter] = useState("ALL");
-  const [orderBranchFilter, setOrderBranchFilter] = useState("ALL");
-
-  const filteredOrders = useMemo(() => {
-    const normalizedQuery = orderQuery.trim().toLowerCase();
-    return orders.filter((o) => {
-      const matchesQuery =
-        !normalizedQuery ||
-        o.customer.toLowerCase().includes(normalizedQuery) ||
-        o.id.toLowerCase().includes(normalizedQuery);
-      const matchesStatus = orderStatusFilter === "ALL" || o.status === orderStatusFilter;
-      const matchesBranch = orderBranchFilter === "ALL" || o.branch === orderBranchFilter;
-      return matchesQuery && matchesStatus && matchesBranch;
-    });
-  }, [orders, orderQuery, orderStatusFilter, orderBranchFilter]);
+  // Spec 031: búsqueda, filtros, orden y paginado compartidos con el Operador.
+  const orderFilters = useOrderFilters(orders);
 
   const currentTab = ADMIN_TABS.find((t) => t.key === activeTab);
 
@@ -1049,50 +1044,15 @@ function AdminView({
               </button>
             </div>
 
-            <div className="orders-filter-bar">
-              <input
-                className="form-input"
-                value={orderQuery}
-                onChange={(e) => setOrderQuery(e.target.value)}
-                placeholder="Buscar por cliente o N° de orden..."
-              />
-              <select
-                className="form-input form-select"
-                value={orderStatusFilter}
-                onChange={(e) => setOrderStatusFilter(e.target.value)}
-              >
-                <option value="ALL">Todos los estados</option>
-                {STATUS_FLOW.map((s) => (
-                  <option key={s} value={s}>
-                    {STATUS_LABELS[s]}
-                  </option>
-                ))}
-              </select>
-              <select
-                className="form-input form-select"
-                value={orderBranchFilter}
-                onChange={(e) => setOrderBranchFilter(e.target.value)}
-              >
-                <option value="ALL">Todas las sucursales</option>
-                {BRANCHES.map((b) => (
-                  <option key={b} value={b}>
-                    {b}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                className="btn2 btn2-outline"
-                onClick={onRefreshOrders}
-                title="Volver a pedir las órdenes al backend"
-              >
-                <RefreshCw size={12} /> Actualizar
-              </button>
-            </div>
+            <OrderFilters
+              filters={orderFilters}
+              statusOptions={ORDER_STATUS_OPTIONS}
+              branches={BRANCHES}
+              onRefresh={onRefreshOrders}
+              placeholder="Buscar N°, cliente, servicio..."
+            />
 
-            {filteredOrders.length === 0 ? (
-              <p className="op2-empty-sm">Sin resultados</p>
-            ) : (
+            {orderFilters.matches > 0 && (
               <div className="table2-wrapper">
                 <table className="table2">
                   <thead>
@@ -1107,7 +1067,7 @@ function AdminView({
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredOrders.map((o) => (
+                    {orderFilters.visibleOrders.map((o) => (
                       <tr key={o.id}>
                         <td className="cell-strong">{o.id}</td>
                         <td>{o.customer}</td>
@@ -1128,6 +1088,8 @@ function AdminView({
                 </table>
               </div>
             )}
+
+            <OrderListFooter filters={orderFilters} />
 
             {orderModal === "new" && (
               <NewOrderModal services={services} onCreate={handleOrderCreate} onClose={() => setOrderModal(null)} />
@@ -1299,8 +1261,10 @@ function OperadorView({
 }) {
   const [query, setQuery] = useState("");
   const [viewOrder, setViewOrder] = useState(null);
-  const [orderQuery, setOrderQuery] = useState("");
-  const [orderStatusFilter, setOrderStatusFilter] = useState("ALL");
+  // Spec 031: mismas herramientas de búsqueda que el Admin. Arranca en "Activas"
+  // (lo que gestiona en su turno); "Todos los estados" incluye las entregadas
+  // y canceladas, para que ninguna orden quede oculta sin que él lo pida.
+  const orderFilters = useOrderFilters(orders, { initialStatus: "ACTIVE" });
 
   const pending = orders.filter((o) => o.status === "CREADO" || o.status === "ACEPTADO").length;
   const express = orders.filter((o) => o.service === "Servicio exprés").length;
@@ -1310,21 +1274,6 @@ function OperadorView({
     () => services.filter((s) => s.name.toLowerCase().includes(query.toLowerCase())),
     [query, services]
   );
-
-  const activeOrders = useMemo(() => {
-    const normalizedQuery = orderQuery.trim().toLowerCase();
-    return orders.filter((o) => {
-      // Sin filtro explícito, oculta las entregadas (ya no requieren
-      // gestión); si el operador elige "Entregado" a propósito, se muestran.
-      if (orderStatusFilter === "ALL" && o.status === "ENTREGADO") return false;
-      const matchesQuery =
-        !normalizedQuery ||
-        o.id.toLowerCase().includes(normalizedQuery) ||
-        o.customer.toLowerCase().includes(normalizedQuery);
-      const matchesStatus = orderStatusFilter === "ALL" || o.status === orderStatusFilter;
-      return matchesQuery && matchesStatus;
-    });
-  }, [orders, orderQuery, orderStatusFilter]);
 
   return (
     <div className="bento2-grid role-operador">
@@ -1354,37 +1303,15 @@ function OperadorView({
       </BentoCard>
 
       <BentoCard title="Gestión de órdenes" subtitle="Consulta y ajusta el estado de cada orden" icon={KanbanSquare} className="card-op-orders">
-        <div className="orders-filter-bar">
-          <input
-            className="form-input"
-            value={orderQuery}
-            onChange={(e) => setOrderQuery(e.target.value)}
-            placeholder="Buscar por N° de orden o cliente..."
-          />
-          <select
-            className="form-input form-select"
-            value={orderStatusFilter}
-            onChange={(e) => setOrderStatusFilter(e.target.value)}
-          >
-            <option value="ALL">Todos los estados</option>
-            {STATUS_FLOW.map((s) => (
-              <option key={s} value={s}>
-                {STATUS_LABELS[s]}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            className="btn2 btn2-outline"
-            onClick={onRefreshOrders}
-            title="Volver a pedir las órdenes al backend"
-          >
-            <RefreshCw size={12} /> Actualizar
-          </button>
-        </div>
+        <OrderFilters
+          filters={orderFilters}
+          statusOptions={OPERADOR_STATUS_OPTIONS}
+          onRefresh={onRefreshOrders}
+          placeholder="Buscar N°, cliente, servicio..."
+        />
 
         <ul className="op2-order-list">
-          {activeOrders.map((o) => {
+          {orderFilters.visibleOrders.map((o) => {
             return (
               <li key={o.id} className="op2-order-item">
                 <div>
@@ -1404,8 +1331,9 @@ function OperadorView({
               </li>
             );
           })}
-          {activeOrders.length === 0 && <li className="op2-empty">No hay órdenes activas.</li>}
         </ul>
+
+        <OrderListFooter filters={orderFilters} />
 
         {viewOrder && (
           <OrderLifecycleModal

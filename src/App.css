@@ -1927,3 +1927,25 @@ input {
   font-size: 0.72rem;
   color: var(--color-text-soft);
 }
+
+/* =========================================================
+   Pie de la lista de órdenes: contador y "Ver más" (Spec 031)
+   ========================================================= */
+
+.orders-list-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.85rem;
+}
+
+.orders-count {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.orders-empty {
+  margin-top: 0.85rem;
+}
