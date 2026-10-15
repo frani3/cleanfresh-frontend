@@ -1,0 +1,93 @@
+# Clúster RabbitMQ de dos nodos (rabbit1 + rabbit2) con el panel de administración, y la
+# topología del enunciado cargada al arrancar. Va en su propia EC2 (ec2-mq), aparte de los
+# microservicios (ver ../docker-compose.yml). Variables en ./.env (ver .env.example).
+#
+#   AMQP:   rabbit1 -> :5672   rabbit2 -> :5673
+#   Panel:  rabbit1 -> :15672  rabbit2 -> :15673
+name: cleanfresh-mq
+
+x-rabbit: &rabbit
+  image: rabbitmq:3.13-management
+  restart: unless-stopped
+  environment: &rabbit-env
+    RABBITMQ_ERLANG_COOKIE: ${RABBITMQ_ERLANG_COOKIE}
+    RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+    RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+  healthcheck:
+    test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+    interval: 10s
+    timeout: 10s
+    retries: 12
+    start_period: 30s
+
+services:
+  rabbit1:
+    <<: *rabbit
+    hostname: rabbit1
+    environment:
+      <<: *rabbit-env
+      RABBITMQ_NODENAME: rabbit@rabbit1
+    ports: ["5672:5672", "15672:15672"]
+    volumes:
+      - rabbit1-data:/var/lib/rabbitmq
+
+  rabbit2:
+    <<: *rabbit
+    hostname: rabbit2
+    environment:
+      <<: *rabbit-env
+      RABBITMQ_NODENAME: rabbit@rabbit2
+    entrypoint: ["/bin/bash", "/join-cluster.sh"]
+    # La primera vez se une al clúster y se reinicia: necesita más margen que rabbit1.
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 180s
+    ports: ["5673:5672", "15673:15672"]
+    depends_on:
+      rabbit1:
+        condition: service_healthy
+    volumes:
+      - rabbit2-data:/var/lib/rabbitmq
+      - ./join-cluster.sh:/join-cluster.sh:ro
+
+  # Carga la topología (exchanges, colas, DLQ, bindings y la política de alta disponibilidad)
+  # cuando los dos nodos están unidos en el clúster. Es idempotente: se puede repetir sin
+  # efectos (también con `docker compose run --rm mq-init`).
+  mq-init:
+    image: curlimages/curl:8.10.1
+    restart: "no"
+    depends_on:
+      rabbit1:
+        condition: service_healthy
+      rabbit2:
+        condition: service_started
+    environment:
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+    volumes:
+      - ./definitions.json:/definitions.json:ro
+      - ./politica-ha.json:/politica-ha.json:ro
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        API=http://rabbit1:15672/api
+        AUTH="$$RABBITMQ_USER:$$RABBITMQ_PASSWORD"
+        echo "esperando a que los dos nodos estén unidos en el clúster..."
+        for i in $$(seq 1 90); do
+          n=$$(curl -s -u "$$AUTH" $$API/nodes | grep -o '"running":true' | wc -l)
+          [ "$$n" -ge 2 ] && break
+          sleep 4
+        done
+        echo "nodos activos: $$n"
+        curl -sS -u "$$AUTH" -H "content-type: application/json" -X POST --data-binary @/definitions.json -w "definiciones cargadas: HTTP %{http_code}\n" $$API/definitions
+        # La política de alta disponibilidad se aplica DESPUÉS de que existen las colas: si viene
+        # dentro de las definiciones, RabbitMQ no crea los espejos en el otro nodo.
+        curl -sS -u "$$AUTH" -H "content-type: application/json" -X PUT --data-binary @/politica-ha.json -w "política ha-all (espejos en los dos nodos): HTTP %{http_code}\n" $$API/policies/%2F/ha-all
+
+volumes:
+  rabbit1-data:
+  rabbit2-data:

@@ -18,3 +18,4 @@ del índice de EP1; la plantilla está en
 | 030 | Spec | Notificaciones dirigidas por SQS: aviso al Operador y al Cliente | ✅ Verificado | [030-spec-notificaciones-dirigidas.md](030-spec-notificaciones-dirigidas.md) |
 | 031 | Spec | Búsqueda y navegación de órdenes (Operador y Admin) | ✅ Verificado (datos simulados) | [031-spec-busqueda-ordenes.md](031-spec-busqueda-ordenes.md) |
 | 032 | Spec | Nombre legible del cliente y sucursal elegible al solicitar | ✅ Verificado | [032-spec-nombre-cliente-y-sucursal.md](032-spec-nombre-cliente-y-sucursal.md) |
+| 033 | Spec | Mensajería de comandos con un clúster RabbitMQ de dos nodos (reemplaza a SQS) | 🟡 Aprobada (en implementación) | [033-spec-rabbitmq.md](033-spec-rabbitmq.md) |
