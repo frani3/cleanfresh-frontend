@@ -230,4 +230,30 @@ Limitaciones conocidas: las colas espejo son una función obsoleta en RabbitMQ 3
 por eso la imagen está fijada en `3.13`; con dos nodos no sirven las colas "quorum", que necesitan
 mayoría. Los dos nodos corren como contenedores de una misma EC2, no en máquinas distintas.
 
-Fases 2 a 6: ⏳ pendientes.
+**Fase 2 — productor y consumidores (hecha, solo local).** `orders` (publica) y `notificaciones`
+(consume) contra el clúster real de la fase 1. Se verifica con 28 + 38 pruebas automáticas (broker
+simulado) y con [`verificar-flujo.sh`](../despliegue/mq/verificar-flujo.sh), que usa los dos servicios
+reales (ejecutado dos veces seguidas: "Todo OK").
+
+| # | AC | Estado |
+|---|---|---|
+| 8 | Sobre completo y mensaje persistente con confirmación del broker | ✅ Cumple (pruebas de `RabbitOrderEventPublisher`; confirmación real en el flujo local) |
+| 9 | Orden normal → `kitchen.ticket` + `email.send` por `cmd.direct`; despacho → aviso al Cliente + `invoice.gen`; exprés → `.thermal` / `.high` / `.pdf` por `cmd.topic` | ✅ Cumple (local): ticket, aviso, boleta y las claves exprés llegaron como se esperaba |
+| 10 | Tres listeners independientes: aviso en la campanita, ticket y boleta registrados | ✅ Cumple (local): `/api/notificaciones`, `/api/tickets`, `/api/boletas` |
+| 11 | ACK manual tras procesar; `basicNack` sin reencolar si falla | ✅ Cumple (pruebas de `GestorMensajes` y flujo local: las 6 colas terminan vacías) |
+| 12 | Mensaje venenoso: 3 intentos y a su DLQ por `cmd.dead.dlx`, sin bloquear la cola | ✅ Cumple (local) en `q.cmd.email` y `q.cmd.kitchen` (con un `ORDEN_LISTA` en la cola de tickets); `q.cmd.invoice` solo por pruebas automáticas |
+| 13 | El mismo `eventId` dos veces → un solo efecto | ✅ Cumple (local): publicado dos veces por la API de RabbitMQ, un solo ticket |
+| 14 | Cada DLQ tiene un consumidor que registra el mensaje (cola de origen, motivo, intentos, cuerpo) en el log y la base | ✅ Cumple (local) para las DLQ de email y kitchen: aparece en `/api/muertos` y la DLQ queda vacía |
+
+Además se probó el **desacople**: con `notificaciones` detenido, `orders` creó la orden igual, los
+comandos esperaron en `q.cmd.email` y `q.cmd.kitchen` (0 consumidores, 1 mensaje cada una) y, al volver
+el servicio, los consumió (un aviso y un ticket de esa orden).
+
+Precisiones: el campo `intentos` del registro de mensajes muertos es el conteo de `x-death` de RabbitMQ
+(veces que el mensaje fue enviado a la DLQ, normalmente 1); los 3 intentos de proceso quedan en el log del
+consumidor. El revisor de DLQ corre cada 30 s (20 s en la prueba), así que un mensaje puede estar en la DLQ
+unos segundos antes de registrarse. La prueba automática falló dos veces por errores del propio script
+(orden de campos del JSON, retraso de las estadísticas del panel, un ticket de una corrida anterior) y se
+corrigió el script, no el servicio.
+
+Fases 3 a 6: ⏳ pendientes.
