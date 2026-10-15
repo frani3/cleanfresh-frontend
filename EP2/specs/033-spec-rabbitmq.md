@@ -256,4 +256,31 @@ unos segundos antes de registrarse. La prueba automática falló dos veces por e
 (orden de campos del JSON, retraso de las estadísticas del panel, un ticket de una corrida anterior) y se
 corrigió el script, no el servicio.
 
-Fases 3 a 6: ⏳ pendientes.
+**Fase 3 — administrador (hecha, solo local).** Repo nuevo
+[`ms-cleanfresh-mq-admin`](https://github.com/frani3/ms-cleanfresh-mq-admin) (puerto 8086, sin base de
+datos, Swagger) y la ruta `/api/mq/**` del BFF. Se verifica con 40 pruebas del administrador, 10 nuevas del
+BFF (54 en total) y [`verificar-admin.sh`](../despliegue/mq/verificar-admin.sh), que contrasta cada
+cambio con la API del panel de RabbitMQ (corrido contra el clúster real, "Todo OK").
+
+| # | AC | Estado |
+|---|---|---|
+| 15 | Crea/elimina colas y exchanges y crea/elimina bindings; se ve en el panel de RabbitMQ y en `GET /api/mq/topologia` | ✅ Cumple (local): cola con su DLQ y su DLX, exchange topic, binding con `#`, y todo se confirmó en el panel; nombres inválidos, exchanges `amq.*` y tipos distintos de direct/topic se rechazan con 400 |
+| 16 | `GET /api/mq/metricas` muestra mensajes por cola y DLQ y avisa cuando una DLQ no está vacía, con una advertencia en el log | 🟡 La parte del endpoint y la advertencia en el log: ✅ (local, con un mensaje real en `q.cmd.invoice.dlq`). Falta la revisión periódica (fase 4) |
+| 17 | Solo el rol Admin llega al administrador por el BFF (401 sin token, 403 con otro rol); Swagger/OpenAPI | 🟡 Swagger ✅ (`/swagger-ui.html`, `/v3/api-docs`). 401/403/200 probados con `jwt()` simulado; falta probarlo con un token real de Cognito (fase 5, desplegado) |
+
+Otros comportamientos verificados en vivo:
+
+- `POST /api/mq/topologia/base` es **idempotente** (dos veces seguidas, siguen 11 bindings) y **repara**:
+  eliminado a mano el binding `email.*`, `email.otro` dejó de enrutarse y volvió a hacerlo al declarar la base.
+- Con `rabbit1` detenido, el administrador siguió respondiendo, creó y eliminó colas por el segundo nodo
+  (prueba el cliente con dos URL de la API de administración).
+- `DELETE /bindings` (con cuerpo) funciona por el cliente HTTP real del BFF, y las claves con `*` y `#`
+  se eliminan bien (la API pide la clave codificada; el administrador la busca antes de borrar).
+- Un `404` o `400` del administrador llega al Admin con su mismo código; si el administrador no responde,
+  el BFF contesta `503`.
+
+Limitaciones: la política `ha-all` solo cubre colas `q.cmd.*`; las cifras de métricas tienen unos segundos
+de retraso (estadísticas del panel); el BFF solo reenvía las rutas conocidas del administrador (lista
+blanca), el resto responde 404.
+
+Fases 4 a 6: ⏳ pendientes.
