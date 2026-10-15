@@ -283,4 +283,15 @@ Limitaciones: la política `ha-all` solo cubre colas `q.cmd.*`; las cifras de m�
 de retraso (estadísticas del panel); el BFF solo reenvía las rutas conocidas del administrador (lista
 blanca), el resto responde 404.
 
-Fases 4 a 6: ⏳ pendientes.
+**Fase 4 — alerta de DLQ (hecha, solo local).** El administrador revisa las DLQ solo (`AlertaDlq`, cada
+30 s; configurable) y no depende de que alguien pida las métricas. 45 pruebas del administrador en total.
+
+| # | AC | Estado |
+|---|---|---|
+| 16 | `GET /api/mq/metricas` y advertencia en el log cuando una DLQ no está vacía | ✅ Cumple (local): con un mensaje dejado en `q.cmd.email.dlq` el log mostró `WARN ... ALERTA DLQ (revisión periódica): La DLQ q.cmd.email.dlq tiene 1 mensaje(s) sin atender` una sola vez (la revisión corrió varias veces) y, tras vaciarla, `Las DLQ volvieron a estar vacías` |
+
+Avisa cuando la situación **cambia**, no en cada vuelta, para que el log no se llene con la misma línea. Si
+no hay broker, anota que no pudo revisar y reintenta en el siguiente intervalo (no se cae). Las cifras
+dependen de las estadísticas del panel de RabbitMQ, así que el aviso puede tardar unos segundos de más.
+
+Fases 5 y 6: ⏳ pendientes.
