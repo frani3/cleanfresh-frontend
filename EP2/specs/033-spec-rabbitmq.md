@@ -1,7 +1,7 @@
 ---
 id: 033
 type: spec
-status: approved
+status: implemented
 ---
 
 # Spec 033 — Mensajería de comandos con un clúster RabbitMQ de dos nodos
@@ -294,4 +294,37 @@ Avisa cuando la situación **cambia**, no en cada vuelta, para que el log no se 
 no hay broker, anota que no pudo revisar y reintenta en el siguiente intervalo (no se cae). Las cifras
 dependen de las estadísticas del panel de RabbitMQ, así que el aviso puede tardar unos segundos de más.
 
-Fases 5 y 6: ⏳ pendientes.
+**Fase 5 — AWS y retiro de SQS (hecha).** Clúster en la EC2 `cleanfresh-mq`, microservicios y administrador en
+la EC2 #2, BFF reconstruido. La evidencia con las salidas está en
+[`EVIDENCIA-EP2.md`](../EVIDENCIA-EP2.md) (sección 10).
+
+| # | AC | Estado |
+|---|---|---|
+| 1 | `docker-compose.yml` levanta `rabbit1` y `rabbit2` con panel, en una EC2 propia | ✅ Cumple (AWS): EC2 `cleanfresh-mq` (`t3.medium`), grupo `cleanfresh-sg-mq` |
+| 2 | El panel muestra dos nodos activos en un solo clúster | ✅ Cumple (AWS): `verificar-mq.sh` y el administrador (`rabbit@rabbit1 (activo)`, `rabbit@rabbit2 (activo)`) |
+| 3 | Colas replicadas en los dos nodos; con un nodo detenido se sigue publicando y consumiendo | ✅ Cumple (AWS): `demo-nodo-caido.sh` en la EC2, espejos sincronizados en las 6 colas |
+| 4 | Tras reiniciar contenedores o la EC2, el clúster se forma solo y conserva colas y mensajes | ✅ Cumple (AWS): reinicio de los dos nodos dentro de `demo-nodo-caido.sh` y `reboot` de la EC2 (los contenedores volvieron solos y el clúster se reformó) |
+| 5–7 | Topología y enrutamiento (`cmd.direct`, `cmd.topic`) | ✅ Cumple (AWS): `verificar-mq.sh` ("Todo OK" tres veces) y `verificar-flujo.sh` con claves reales |
+| 8–11 | Envelope, comandos de `orders`, tres listeners de `notificaciones`, ACK/NACK | ✅ Cumple (AWS): `verificar.sh` y `verificar-flujo.sh` en la EC2 #2 |
+| 12 | Mensaje venenoso: 3 intentos y DLQ, sin bloquear la cola | ✅ Cumple (AWS) en `q.cmd.email` y `q.cmd.kitchen`; `q.cmd.invoice` solo en pruebas automáticas y local |
+| 13 | Idempotencia por `eventId` | ✅ Cumple (AWS): un solo ticket aunque llegue dos veces |
+| 14 | Las DLQ tienen un consumidor que registra el mensaje | ✅ Cumple (AWS) para email y kitchen: `/api/muertos` y DLQ vacía |
+| 15 | El administrador crea/elimina colas, exchanges y bindings | ✅ Cumple en local (cada cambio contrastado con el panel). 🟡 En AWS se comprobó que el administrador ve el clúster (topología y métricas por el BFF) y que `verificar.sh` lo valida; no se repitió ahí el crear/eliminar |
+| 16 | Métricas y alerta de DLQ | ✅ Cumple (local); en AWS, `/api/mq/metricas` responde 200 por el BFF |
+| 17 | Solo Admin llega al administrador por el BFF; Swagger | ✅ Cumple (AWS, token real de Cognito): sin token 401, Admin 200, Operador 403. 🟡 El 403 con rol Cliente no se probó |
+| 18 | Con RabbitMQ apagado los servicios arrancan y funcionan | ✅ Cumple (pruebas automáticas y local, `RABBIT_ENABLED=false` por defecto) |
+| 19 | SQS deja de usarse: se retiran código, variables y la cola `cleanfresh-ordenes` | ✅ Cumple (AWS): cola eliminada (`list-queues` → `None`), código y variables retirados; avisos y desacople siguen funcionando sobre RabbitMQ |
+
+Dos problemas reales de la fase (detallados en la evidencia): los espejos no se creaban en el primer arranque
+porque `mq-init` aplicaba la política mientras `rabbit2` se reiniciaba (ahora espera nodos estables y comprueba
+los espejos), y la EC2 de mensajería se lanzó como `t3.micro` y hubo que pasarla a `t3.medium`.
+
+**Fase 6 — cierre (hecha).**
+
+| # | AC | Estado |
+|---|---|---|
+| 20 | Evidencia en `EP2/EVIDENCIA-EP2.md` y guía de demostración con: dos nodos, caída de un nodo, mensaje a la DLQ, idempotencia, desacople y uso del administrador | ✅ Cumple: [`EVIDENCIA-EP2.md`](../EVIDENCIA-EP2.md) sección 10 y [`GUIA-DEMOSTRACION.md`](../GUIA-DEMOSTRACION.md) 5.3 y 5.8. `ARQUITECTURA.md` y `CLAUDE.md` (sincronizado en los 8 repos) actualizados |
+
+**Pendiente para completar la verificación:** el 403 con rol Cliente en `/api/mq/**`; repetir en AWS el
+crear/eliminar del administrador; la DLQ de `q.cmd.invoice` con consumidores reales en AWS; capturas de pantalla.
+**Al terminar la evaluación:** liberar la Elastic IP del BFF y apagar o eliminar las 3 EC2, la RDS y la API Gateway.

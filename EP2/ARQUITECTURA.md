@@ -1,7 +1,12 @@
 # Arquitectura objetivo — EP2
 
-Estado: **diseño** (nada de esto está implementado todavía). El punto de
-partida es la arquitectura cerrada en EP1 (ver `EP1/specs/028-spec-despliegue-aws-ec2-api-gateway.md`).
+Estado: **implementada y desplegada** (specs 029 a 033). El punto de partida es la arquitectura cerrada en
+EP1 (ver `EP1/specs/028-spec-despliegue-aws-ec2-api-gateway.md`).
+
+> **Spec 033:** la mensajería pasó de AWS SQS a un **clúster RabbitMQ de dos nodos en su propia EC2**
+> (`cleanfresh-mq`), con un microservicio administrador (`ms-cleanfresh-mq-admin`, :8086). El diagrama de abajo
+> es el diseño original (todavía dibuja SQS); el vigente de la mensajería está en la sección
+> "Mensajería con RabbitMQ", más abajo. Los valores de los recursos están en `CLAUDE.md`.
 
 ## Diagrama
 
@@ -81,10 +86,10 @@ partida es la arquitectura cerrada en EP1 (ver `EP1/specs/028-spec-despliegue-aw
 | Tema | EP1 (hoy) | EP2 (objetivo) |
 |---|---|---|
 | Ejecución | `java -jar` directo en cada EC2 | Docker (BFF y los microservicios) |
-| EC2 | 3 instancias: BFF, orders, catalog | 2 instancias: #1 BFF, #2 todos los microservicios |
-| Microservicios | orders, catalog | orders, catalog + notificaciones, reportes, auditoría |
+| EC2 | 3 instancias: BFF, orders, catalog | 3 instancias: #1 BFF, #2 todos los microservicios, #3 RabbitMQ (`cleanfresh-mq`) |
+| Microservicios | orders, catalog | orders, catalog + notificaciones, reportes, auditoría y el administrador de RabbitMQ (`mq-admin`) |
 | Datos | en memoria (se pierden al reiniciar) | PostgreSQL en RDS: BD Orders y BD Catalog |
-| Mensajería | no hay | AWS SQS: orders publica, notificaciones consume |
+| Mensajería | no hay | RabbitMQ (clúster de 2 nodos en una EC2 propia): orders publica comandos, notificaciones los consume (Spec 033; SQS se usó en la Spec 029 y se retiró) |
 | Seguridad de red | puertos abiertos a `0.0.0.0/0` (demo) | microservicios accesibles solo desde la EC2 #1 |
 
 La EC2 de `catalog` (`44.203.57.139`) y la de `orders` (`3.86.143.171`)
@@ -100,6 +105,9 @@ dejan de ser necesarias: ambos servicios pasan a la EC2 #2.
 | ms-cleanfresh-notificaciones | EC2 #2 | 8083 | nuevo |
 | ms-cleanfresh-reportes | EC2 #2 | 8084 | nuevo |
 | ms-cleanfresh-auditoria | EC2 #2 | 8085 | nuevo |
+| ms-cleanfresh-mq-admin | EC2 #2 | 8086 | nuevo (Spec 033) |
+| RabbitMQ (AMQP) | EC2 #3 | 5672 (rabbit1), 5673 (rabbit2) | nuevo (Spec 033) |
+| RabbitMQ (panel y API de administración) | EC2 #3 | 15672, 15673 | nuevo (Spec 033) |
 
 **Evaluación:** la numeración es consistente y sin conflictos. 8080–8082
 coinciden con lo que ya corre hoy y 8083–8085 son una continuación
@@ -120,8 +128,9 @@ Puntos a tener en cuenta:
    group/IP de la EC2 #1. API Gateway apunta únicamente al BFF (:8080);
    ningún cliente externo necesita llegar a los microservicios.
 3. **Puertos que el diagrama no muestra:** PostgreSQL en RDS (5432,
-   abierto solo al security group de la EC2 #2), SQS (sale por HTTPS 443,
-   sin puerto propio, pero necesita permisos IAM en la EC2 #2) y SSH (22).
+   abierto solo al security group de la EC2 #2), RabbitMQ en la EC2 #3 (AMQP 5672–5673 y administración
+   15672–15673 abiertos solo al security group de la EC2 #2; el panel y SSH solo a la IP del autor) y SSH (22).
+   El administrador (`:8086`) solo lo alcanza el BFF.
 
 ## Decisiones tomadas
 
@@ -148,29 +157,65 @@ Puntos a tener en cuenta:
    sucursal; registro de acciones y accesos denegados) se implementa en la
    siguiente entrega. Mientras tanto, las pestañas "Analítica por sucursal" y
    "Registro de auditoría" del panel Admin siguen con sus datos de ejemplo.
-4. **SQS (alcance mínimo):** `orders` publica un evento `ORDEN_CREADA` al
-   crearse una orden (hoy es el único evento real del backend: el cambio de
-   estado todavía vive solo en el navegador); `notificaciones` lo consume y
-   registra el aviso (log). Sin envío real de correo. Una cola estándar
-   entrega cada mensaje a un solo consumidor, así que esta cola es solo de
-   `notificaciones`. La cola se llama `cleanfresh-ordenes`; ambos servicios la
-   usan con el AWS SDK v2 y la tienen apagada por defecto (`SQS_ENABLED=false`).
+4. **Mensajería: RabbitMQ en lugar de SQS (Spec 033).** En la Spec 029 `orders` publicaba un evento en una
+   cola SQS que consumía `notificaciones`. La pauta de la evaluación pide RabbitMQ (clúster de dos nodos,
+   colas con DLQ, exchanges direct y topic, administrador), así que se reemplazó: `orders` publica
+   **comandos** y `notificaciones` consume tres colas (aviso, ticket de taller, boleta). El detalle está en
+   la sección siguiente y en [`specs/033-spec-rabbitmq.md`](specs/033-spec-rabbitmq.md).
 5. **Los microservicios confían totalmente en el BFF.** Ninguno valida el
    JWT: el BFF es el único punto que autentica, autoriza por rol y decide qué
    datos ve cada usuario. Como esa confianza solo es segura si nadie más puede
    llamar a los microservicios, la regla de red de la sección "Puertos" pasa a
    ser obligatoria: la EC2 #2 acepta 8081–8085 únicamente desde la EC2 #1.
 
+## Mensajería con RabbitMQ (Spec 033)
+
+```
+ orders (EC2 #2)                       EC2 #3 `cleanfresh-mq`  (clúster de 2 nodos, colas espejadas)
+ publica comandos ───────────────►  ┌────────────────────────────────────────────────────────────┐
+  (confirmación del broker,         │ cmd.direct (direct)  cmd.topic (topic)   cmd.dead.dlx      │
+   mensajes persistentes)           │      │  email.send        │ email.* / email.send.*  (direct)│
+                                    │      │  kitchen.ticket    │ kitchen.#                       │
+                                    │      │  invoice.gen       │ invoice.* / invoice.gen.*       │
+                                    │      ▼                    ▼                      ▲          │
+                                    │  q.cmd.email    q.cmd.kitchen    q.cmd.invoice   │ rechazo  │
+                                    │      └── cada una con x-dead-letter-exchange ────┘          │
+                                    │  q.cmd.email.dlq  q.cmd.kitchen.dlq  q.cmd.invoice.dlq      │
+                                    └───────┬─────────────────┬──────────────────┬───────────────┘
+                                            │ ACK manual      │                  │
+ notificaciones (EC2 #2) ◄──────────────────┴─────────────────┴──────────────────┘
+  3 listeners (aviso · ticket de taller · boleta), 3 intentos, idempotencia por eventId,
+  y un revisor que registra cada mensaje de las DLQ (cuerpo, cola de origen, motivo) en su base
+
+ ms-cleanfresh-mq-admin (EC2 #2, :8086) ──► API de administración de los dos nodos (15672/15673)
+  crea/elimina colas, exchanges y bindings, declara la topología base, mide las colas y avisa si una DLQ no está vacía
+  ▲
+  └── solo por el BFF (`/api/mq/**`), rol Admin
+```
+
+- **Comandos:** al crear una orden `orders` publica `kitchen.ticket` y `email.send`; al despacharla, `email.send` e
+  `invoice.gen`. Las órdenes de *Servicio exprés* usan `cmd.topic` con las variantes `.thermal`, `.high` y `.pdf`;
+  las demás, `cmd.direct`. Todos van en un sobre común (`type`, `eventId`, `timestamp`, `traceId`,
+  `correlationId`, `payload`).
+- **Fallos:** un mensaje que falla 3 veces se rechaza sin reencolar y RabbitMQ lo manda a la DLQ de su cola por
+  `cmd.dead.dlx`; el consumidor no se bloquea y el mensaje queda registrado.
+- **Alta disponibilidad:** la política `ha-all` replica las colas `q.cmd.*` en los dos nodos; con un nodo caído
+  los servicios siguen publicando y consumiendo (reciben la lista de los dos nodos). Las colas espejadas son una
+  función obsoleta en RabbitMQ 3.13 (se retira en 4.0), por eso la imagen está fijada en `3.13`; con dos nodos
+  no sirven las colas "quorum". Los dos nodos son contenedores de una misma EC2, no máquinas distintas.
+- **Desacople:** si `notificaciones` cae, los comandos esperan en las colas y se consumen al volver.
+
 ## Alcance por servicio en EP2
 
 | Servicio | Puerto | BD | Qué hace en EP2 |
 |---|---|---|---|
-| ms-cleanfresh-bff | 8080 | no | igual que EP1; ahora en Docker y con rutas nuevas hacia reportes y auditoría (solo Admin). `notificaciones` no tiene ruta: solo recibe de SQS |
-| ms-cleanfresh-orders | 8081 | `orders_db` (RDS) | migra de memoria a PostgreSQL; publica `ORDEN_CREADA` en SQS |
+| ms-cleanfresh-bff | 8080 | no | igual que EP1; ahora en Docker y con rutas nuevas hacia reportes, auditoría y `/api/mq/**` (solo Admin) |
+| ms-cleanfresh-orders | 8081 | `orders_db` (RDS) | migra de memoria a PostgreSQL; publica los comandos de RabbitMQ al crear una orden y al despacharla |
 | ms-cleanfresh-catalog | 8082 | `catalog_db` (RDS) | migra de memoria a PostgreSQL |
-| ms-cleanfresh-notificaciones | 8083 | no | consume SQS y registra el aviso |
+| ms-cleanfresh-notificaciones | 8083 | `notificaciones_db` (RDS) | consume las 3 colas de RabbitMQ (aviso, ticket de taller, boleta), registra los mensajes de las DLQ |
 | ms-cleanfresh-reportes | 8084 | no | esqueleto: controller con respuesta fija |
 | ms-cleanfresh-auditoria | 8085 | no | esqueleto: controller con respuesta fija |
+| ms-cleanfresh-mq-admin | 8086 | no | administra RabbitMQ (colas, exchanges, bindings, métricas); solo por el BFF y con rol Admin |
 
 ## Entorno AWS desplegado
 
@@ -184,10 +229,11 @@ en [`EVIDENCIA-EP2.md`](EVIDENCIA-EP2.md).
 | IDaaS | Cognito User Pool `cleanfresh-users`, App Client `cleanfresh-spa` (SPA, sin secret), Hosted UI, scope `https://api.cleanfresh.com/access_as_user`, grupos Admin/Operador/Cliente |
 | Entrada | API Gateway HTTP API con JWT Authorizer; `OPTIONS` sin authorizer; CORS en el BFF |
 | EC2 #1 | BFF en Docker (`:8080`), `t3.small` |
-| EC2 #2 | 5 microservicios con `docker compose` (`:8081`–`:8085`), `t3.medium`, swap persistente |
-| Datos | RDS PostgreSQL 16, bases `orders_db` y `catalog_db`, un usuario por servicio, sin acceso público |
-| Mensajería | SQS Standard `cleanfresh-ordenes`, con el `LabInstanceProfile` de las EC2 |
-| Red | tres grupos de seguridad encadenados: internet → BFF → microservicios → RDS |
+| EC2 #2 | 6 microservicios con `docker compose` (`:8081`–`:8086`), `t3.medium`, swap persistente |
+| EC2 #3 | Clúster RabbitMQ de dos nodos con `docker compose` (`:5672`–`:5673`, panel `:15672`–`:15673`), `t3.medium` |
+| Datos | RDS PostgreSQL 16, bases `orders_db`, `catalog_db` y `notificaciones_db`, un usuario por servicio, sin acceso público |
+| Mensajería | RabbitMQ 3.13 en la EC2 #3 (2 nodos, colas espejadas, topología cargada al arrancar) |
+| Red | cuatro grupos de seguridad: internet → BFF → microservicios → RDS y RabbitMQ (solo desde los microservicios) |
 
 Se usó el `LabInstanceProfile` que ya trae AWS Academy: no hizo falta crear
 roles IAM propios.
@@ -197,6 +243,8 @@ roles IAM propios.
 - **RDS no es un PostgreSQL con superusuario.** `CREATE DATABASE ... OWNER x`
   falla si el usuario maestro no es miembro de `x`; hay que hacer
   `GRANT x TO postgres` antes.
+- **Una `t3.micro` no basta para RabbitMQ.** La EC2 de mensajería se lanzó por error como `t3.micro` (1 GiB, insuficiente para dos nodos); se cambió a `t3.medium` (detener, cambiar el tipo, iniciar).
+- **El segundo nodo de RabbitMQ se reinicia en el primer arranque** (se une al clúster y vuelve a arrancar). La política de espejos solo se crea bien si se aplica cuando los dos nodos ya están estables; `mq-init` lo espera y lo comprueba.
 - **Cinco JVM en una `t3.small` no caben.** Tras un reinicio la máquina dejó de
   responder (ni SSH ni EC2 Instance Connect) y hubo que hacer Stop/Start. Se
   subió a `t3.medium`, se hizo persistente el swap y se acotó el heap por

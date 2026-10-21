@@ -6,6 +6,10 @@ despliegue en AWS (`us-east-1`). Complementa la tabla de verificación de
 valores de los recursos están en la sección "Despliegue en AWS" de `CLAUDE.md`.
 Contraseñas y tokens no se incluyen.
 
+> **Spec 033 (RabbitMQ):** la mensajería con SQS de las secciones 2, 6, 7 y 8 quedó como historial: la
+> Spec 033 la reemplazó por RabbitMQ. La evidencia vigente de mensajería, del administrador y de la
+> retirada de SQS está en la **sección 10**.
+>
 > **Capturas de pantalla:** por adjuntar en `EP2/capturas/` (panel del Admin,
 > del Operador y del Cliente con `ORD-0008`, y las pantallas de la consola de
 > AWS).
@@ -36,7 +40,7 @@ requiere ser miembro de `x`; se resolvió con `GRANT orders_user TO postgres` (y
 lo mismo para `catalog_user`) y creando las bases. Ambos servicios arrancaron
 solos gracias a `restart: unless-stopped`.
 
-## 2. Mensajería SQS (ACs 9–11)
+## 2. Mensajería SQS (ACs 9–11) — historial, reemplazada por RabbitMQ (sección 10)
 
 Con `SQS_ENABLED=true` y el `LabInstanceProfile` de la EC2 #2, tras el `POST` de
 `ORD-0007`:
@@ -137,7 +141,7 @@ Esto demuestra en vivo: los 5 servicios en Docker, los datos en PostgreSQL
 (RDS) con una base y un usuario por servicio, el aislamiento entre bases, el
 recorrido completo por SQS y la persistencia tras un reinicio.
 
-## 7. Avisos dirigidos por SQS (Spec 030)
+## 7. Avisos dirigidos por SQS (Spec 030) — historial, ahora por RabbitMQ (sección 10)
 
 Verificación en el entorno real de AWS. El detalle por criterio está en
 [`specs/030-spec-notificaciones-dirigidas.md`](specs/030-spec-notificaciones-dirigidas.md).
@@ -232,7 +236,7 @@ Operador con sus avisos): por adjuntar en `EP2/capturas/`.
 - `ORD-0011` parecía "no avisar" porque seguía en `CREADO`: el cambio a *Despachado* aún no se
   había hecho. Sin defecto de código.
 
-## 8. Desacople: la solicitud sobrevive a la caída de notificaciones
+## 8. Desacople: la solicitud sobrevive a la caída de notificaciones (con SQS; historial, ver sección 10 para RabbitMQ)
 
 Caso que pidió el profesor: el cliente solicita un servicio, el mensaje llega a SQS y el
 microservicio de notificaciones está caído; al levantarse, la solicitud debe seguir ahí y
@@ -323,3 +327,152 @@ Lo que demuestra:
 - **Sucursal:** la orden quedó en Las Condes, elegida en el selector del catálogo. El aviso fue a esa
   sucursal, no a Providencia (un Operador lo ve con "Sucursal en turno" = Las Condes).
 - **Sin fallos:** el log del BFF no registró ningún error al consultar a Cognito.
+
+## 10. Mensajería con RabbitMQ (Spec 033)
+
+Verificación en AWS (`us-east-1`) del reemplazo de SQS por un clúster RabbitMQ de dos nodos. Detalle de la
+spec y de las pruebas locales en [`specs/033-spec-rabbitmq.md`](specs/033-spec-rabbitmq.md). Los scripts
+están en [`despliegue/mq/`](despliegue/mq/) y [`despliegue/`](despliegue/). Contraseñas y tokens no se incluyen.
+
+### 10.1 Clúster en su propia EC2 (ACs 1–7)
+
+EC2 `cleanfresh-mq` (`t3.medium`, grupo de seguridad `cleanfresh-sg-mq`: AMQP 5672–5673 y API de
+administración 15672–15673 solo desde `cleanfresh-sg-ms`; panel y SSH solo desde la IP del autor). Dos
+contenedores (`rabbit1`, `rabbit2`) con `docker compose`. `verificar-mq.sh` contra esa EC2 (tres corridas
+seguidas, todas `Todo OK`):
+
+```
+1) Clúster
+  OK   rabbit1 y rabbit2 son miembros del mismo clúster
+2) Topología cargada
+  OK   exchange cmd.direct (direct) · cmd.topic (topic) · cmd.dead.dlx (direct)
+  OK   6 colas durables · q.cmd.* -> DLX cmd.dead.dlx · 11 bindings · política ha-all
+  OK   q.cmd.email / kitchen / invoice / (y sus .dlq) tienen espejo sincronizado en rabbit@rabbit2
+3) Enrutamiento por cmd.direct: cada clave llega solo a su cola; una clave sin binding no llega a ninguna
+4) Enrutamiento por cmd.topic: email.send(.high), kitchen.ticket(.thermal), invoice.gen(.pdf) -> solo su cola
+5) Un mensaje rechazado va a su DLQ por cmd.dead.dlx (motivo en x-death: rejected)
+Todo OK
+```
+
+`demo-nodo-caido.sh` en la EC2 (detiene `rabbit1`, lee y publica por `rabbit2`, vuelve `rabbit1`, reinicia los
+dos nodos): todos los pasos `OK`, "el sistema siguió sin un nodo y no se perdió ningún mensaje". Tras un
+`reboot` de la EC2 los contenedores volvieron solos (`restart: unless-stopped`, Docker habilitado) y el clúster
+se reformó.
+
+Dos problemas reales, ya corregidos:
+
+- **Los espejos no se creaban en el primer arranque.** En la EC2, `rabbit2` se une al clúster, se detiene y se
+  reinicia; `mq-init` contó "2 nodos activos" en ese instante, aplicó la política `ha-all` y no se crearon los
+  espejos (`slave_nodes: []`). Ahora `mq-init` exige ver los dos nodos activos 4 veces seguidas y, tras aplicar
+  la política, comprueba que existan los 6 espejos (y la reaplica si no). Se recreó el clúster desde cero y
+  `mq-init` informó `espejos creados: 6 de 6 colas`.
+- **La prueba de DLQ de `verificar-mq.sh` fallaba de forma intermitente** contra la EC2: el mensaje rechazado
+  volvía a la cola principal con `redelivered: true`. La API HTTP del panel a veces cierra el canal antes de
+  procesar el rechazo, así que no era un fallo del enrutamiento; el script ahora repite el rechazo. El
+  comportamiento con consumidores reales se comprobó aparte (10.3).
+
+### 10.2 Microservicios sobre RabbitMQ (`verificar.sh`, EC2 #2)
+
+`orders` y `notificaciones` reconstruidos con el código de RabbitMQ (se quitó el de SQS) y el nuevo
+`ms-cleanfresh-mq-admin`; `RABBITMQ_ADDRESSES` apunta a la IP privada de `cleanfresh-mq`.
+
+```
+1) Contenedores        OK  orders, catalog, notificaciones, mq-admin, reportes, auditoria (Up)
+2) Servicios responden OK  ...
+  OK   RabbitMQ: los dos nodos activos (visto por el administrador)
+  OK   RabbitMQ: topología cargada (11 bindings)
+3) Bases de datos en la RDS ... OK
+4) Aislamiento: cada usuario solo entra a su base ... OK
+5) Comandos por RabbitMQ: aviso al Operador/Cliente, ticket de taller y boleta
+  OK   orden creada: ORD-0008 (cliente Verificacion-032844, sucursal Providencia)
+  OK   aviso al Operador de Providencia: Nuevo pedido ORD-0008: Planchado de Verificacion-032844 en Providencia (total $9.500)
+  OK   ticket de taller registrado para ORD-0008 (q.cmd.kitchen)
+  OK   todavía no hay boleta (la orden no está despachada)
+  OK   orden ORD-0008 pasada a DESPACHADO (HTTP 200)
+  OK   un estado inválido se rechaza (HTTP 400)
+  OK   aviso al Cliente: Tu pedido ORD-0008 (Planchado) está listo
+  OK   boleta registrada: BOL-0008
+  OK   despachar dos veces no duplica el aviso (1 aviso)
+  OK   marcar leídos solo afecta a ese Cliente (1 aviso)
+  OK   orders sin errores de publicación
+Todo OK
+```
+
+### 10.3 Flujo completo con consumidores reales (`mq/verificar-flujo.sh`, EC2 #2)
+
+```
+1) Orden normal (Planchado, Providencia): cmd.direct
+  OK   ticket de taller registrado (clave kitchen.ticket) · aviso al Operador · todavía no hay boleta
+2) Se despacha: aviso al Cliente y boleta
+  OK   aviso al Cliente · boleta BOL-0009 registrada (clave invoice.gen)
+3) Orden exprés: variantes por cmd.topic
+  OK   ticket llegó por kitchen.ticket.thermal · aviso (email.send.high) · boleta por invoice.gen.pdf
+4) Idempotencia: el mismo mensaje dos veces produce un solo efecto
+  OK   un solo ticket para ORD-91792553382 aunque llegó dos veces
+5) Mensaje venenoso: 3 intentos, DLQ y registro
+  OK   tras 3 intentos fallidos el mensaje pasó por q.cmd.email.dlq
+  OK   q.cmd.email quedó vacía: el venenoso no bloqueó la cola
+  OK   notificaciones lo registró: "colaOrigen":"q.cmd.email","motivo":"rejected","intentos":1
+  OK   la DLQ quedó vacía tras registrarlo (se confirmó el mensaje)
+6) El flujo del ticket y el de la boleta también tienen su DLQ
+  OK   un ORDEN_LISTA en la cola de tickets va a q.cmd.kitchen.dlq y queda registrado
+7) Las colas quedan vacías: las 6 colas están vacías
+Todo OK
+```
+
+El campo `intentos` del registro es el conteo `x-death` de RabbitMQ (veces enviado a la DLQ, normalmente 1);
+los 3 intentos de proceso quedan en el log del consumidor (`intento 1/3 falló...`, y al final
+`se rechazó tras 3 intentos y va a la DLQ`). La DLQ de `q.cmd.invoice` solo se probó en vivo en local y en las
+pruebas automáticas, no con este recorrido.
+
+### 10.4 Desacople con RabbitMQ (`demo-desacople.sh`, EC2 #2)
+
+```
+[1] Estado inicial: RabbitMQ -> q.cmd.email=0 (consumidores: 1); q.cmd.kitchen=0 (consumidores: 1); q.cmd.invoice=0 (consumidores: 1)
+[2] Se cae el microservicio de notificaciones
+  OK   notificaciones detenido · su puerto 8083 ya no responde
+  OK   las colas q.cmd.email y q.cmd.kitchen quedaron sin consumidores
+[3] El cliente solicita un servicio (POST /api/orders) con notificaciones caído
+  OK   la solicitud se aceptó: ORD-0011 creada (HTTP 201), aunque notificaciones está caído
+  OK   ORD-0011 está guardada en la base de orders (RDS)
+[4] Los comandos esperan en las colas de RabbitMQ (nadie los consume todavía)
+       RabbitMQ -> q.cmd.email=0 (consumidores: 0); q.cmd.kitchen=1 (consumidores: 0); q.cmd.invoice=0 (consumidores: 0)
+  OK   las colas pasaron de 0 a 1 mensaje(s)
+[5] Se levanta de nuevo el microservicio de notificaciones
+  OK   notificaciones volvió a responder
+[6] Al volver, consume los mensajes que esperaban y genera el aviso y el ticket
+  OK   aviso generado para el Operador de Providencia: Nuevo pedido ORD-0011: Lavado en seco de Demo-Desacople-033057 en Providencia (total $45.000)
+  OK   ticket de taller registrado para ORD-0011
+  OK   las colas volvieron a 0 mensaje(s): el pedido se consumió
+  OK   un solo aviso para ORD-0011 (sin duplicados)
+Desacople demostrado: la solicitud sobrevivió a la caída y llegó cuando el servicio volvió.
+```
+
+Nota: las cifras del panel se refrescan cada pocos segundos; en el paso 4 el contador de `q.cmd.email` aún
+mostraba 0 cuando `q.cmd.kitchen` ya mostraba 1 (la orden genera un comando en cada una), y el paso 6 confirma
+que ambos se consumieron.
+
+### 10.5 Administrador de RabbitMQ y autorización por rol (ACs 15–17)
+
+`ms-cleanfresh-mq-admin` (`:8086`, EC2 #2) y la ruta `/api/mq/**` del BFF (reconstruido; el contenedor anterior
+quedó detenido como `bff-anterior`). Para que el BFF lo alcance se abrió el puerto 8086 en `cleanfresh-sg-ms`
+desde `cleanfresh-sg-bff`. Desde la consola del navegador, con el access token real de Cognito de cada sesión
+(`GET https://<api-gateway>/api/mq/topologia` y `/api/mq/metricas`):
+
+| Prueba | `/api/mq/topologia` | `/api/mq/metricas` |
+|---|---|---|
+| Sin token (API Gateway y BFF directo) | 401 | 401 |
+| Admin | 200 (`rabbit@rabbit1 (activo)`, `rabbit@rabbit2 (activo)`, exchanges, colas, bindings) | 200 (mensajes y consumidores por cola) |
+| Operador | 403 | 403 |
+
+El crear/eliminar colas, exchanges y bindings, la declaración idempotente de la topología base, la alerta de
+DLQ y el failover entre los dos nodos se verificaron contra el clúster local con
+[`despliegue/mq/verificar-admin.sh`](despliegue/mq/verificar-admin.sh) (cada cambio contrastado con la API del
+panel de RabbitMQ); no se repitieron en AWS. El 403 con rol Cliente no se probó.
+
+### 10.6 Retirada de SQS (AC 19)
+
+La cola `cleanfresh-ordenes` estaba vacía y era la única de la cuenta. Se eliminó con la AWS CLI desde la EC2 #2
+(`sqs delete-queue`); `sqs list-queues` devolvió `None` tras el borrado (el listado tardó unos segundos en
+reflejarlo). Se quitaron el código y las dependencias de SQS de `orders` y `notificaciones`, y `SQS_*` / `AWS_REGION`
+del `.env` y del `docker-compose.yml`.
