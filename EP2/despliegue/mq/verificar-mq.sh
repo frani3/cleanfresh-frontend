@@ -54,14 +54,23 @@ for q in $COLAS; do
     [ -n "$dur" ] && ok "cola $q (durable)" || fallo "la cola $q no es durable"
   else fallo "falta la cola $q"; fi
 done
-for q in q.cmd.email q.cmd.kitchen q.cmd.invoice; do
+# Dead-lettering por POLÍTICA, como en la guía del profesor (Spec 037): las colas se crean sin argumentos y cada
+# flujo tiene su política policy.<flujo>.dlx con el DLX y la routing key de su DLQ.
+for par in "q.cmd.email:email:email.send" "q.cmd.kitchen:kitchen:kitchen.ticket" "q.cmd.invoice:invoice:invoice.gen"; do
+  q=${par%%:*}; resto=${par#*:}; flujo=${resto%%:*}; clave=${resto##*:}
   info=$(api "$MQ_API/queues/%2F/$q")
-  echo "$info" | grep -q '"x-dead-letter-exchange":"cmd.dead.dlx"' && ok "$q -> DLX cmd.dead.dlx ($(echo "$info" | grep -o '"x-dead-letter-routing-key":"[^"]*"' | cut -d'"' -f4))" || fallo "$q no tiene x-dead-letter-exchange"
+  echo "$info" | grep -q "\"policy\":\"policy.$flujo.dlx\"" && ok "$q tiene la política policy.$flujo.dlx" || fallo "$q no tiene la política policy.$flujo.dlx"
+  echo "$info" | grep -q '"dead-letter-exchange":"cmd.dead.dlx"' && echo "$info" | grep -q "\"dead-letter-routing-key\":\"$clave\"" && ok "$q -> DLX cmd.dead.dlx con la clave $clave (efectivo)" || fallo "$q: el DLX efectivo no es cmd.dead.dlx / $clave"
+  echo "$info" | grep -q '"x-dead-letter-exchange"' && fallo "$q todavía tiene el DLX como argumento (debería ir solo por política)" || true
 done
 # Se cuentan solo los bindings de los exchanges cmd.* (cada cola tiene además uno implícito al exchange por defecto)
 nb=$(api "$MQ_API/bindings/%2F" | grep -o '"source":"cmd\.[a-z.]*"' | wc -l)
-[ "$nb" -eq 11 ] && ok "bindings declarados: $nb (los 9 del enunciado + email.send.* e invoice.gen.* para que las variantes lleguen)" || fallo "hay $nb bindings de cmd.*, se esperaban 11"
+[ "$nb" -eq 9 ] && ok "bindings declarados: $nb (los 9 de la guía: direct, topic email.# / kitchen.# / invoice.# y los de cmd.dead.dlx)" || fallo "hay $nb bindings de cmd.*, se esperaban 9"
 api "$MQ_API/policies/%2F" | grep -q '"name":"ha-all"' && ok "política ha-all (colas replicadas en los dos nodos)" || fallo "falta la política ha-all"
+# Una cola solo tiene UNA política (la de mayor prioridad): la de DLX también debe llevar la replicación.
+for flujo in email kitchen invoice; do
+  api "$MQ_API/policies/%2F/policy.$flujo.dlx" | grep -q '"ha-mode":"all"' && ok "policy.$flujo.dlx también lleva la replicación (ha-mode all)" || fallo "policy.$flujo.dlx no lleva ha-mode: la cola perdería la replicación"
+done
 # Que la política exista no basta: cada cola debe tener de verdad un espejo sincronizado en el otro nodo.
 # (las estadísticas de la API tardan unos segundos en reflejarlo)
 for q in $COLAS; do

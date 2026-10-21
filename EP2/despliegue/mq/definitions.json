@@ -5,27 +5,20 @@
     { "name": "cmd.dead.dlx", "vhost": "/", "type": "direct", "durable": true, "auto_delete": false, "internal": false, "arguments": {} }
   ],
   "queues": [
-    { "name": "q.cmd.email",   "vhost": "/", "durable": true, "auto_delete": false,
-      "arguments": { "x-dead-letter-exchange": "cmd.dead.dlx", "x-dead-letter-routing-key": "email.send" } },
-    { "name": "q.cmd.kitchen", "vhost": "/", "durable": true, "auto_delete": false,
-      "arguments": { "x-dead-letter-exchange": "cmd.dead.dlx", "x-dead-letter-routing-key": "kitchen.ticket" } },
-    { "name": "q.cmd.invoice", "vhost": "/", "durable": true, "auto_delete": false,
-      "arguments": { "x-dead-letter-exchange": "cmd.dead.dlx", "x-dead-letter-routing-key": "invoice.gen" } },
+    { "name": "q.cmd.email",       "vhost": "/", "durable": true, "auto_delete": false, "arguments": {} },
+    { "name": "q.cmd.kitchen",     "vhost": "/", "durable": true, "auto_delete": false, "arguments": {} },
+    { "name": "q.cmd.invoice",     "vhost": "/", "durable": true, "auto_delete": false, "arguments": {} },
     { "name": "q.cmd.email.dlq",   "vhost": "/", "durable": true, "auto_delete": false, "arguments": {} },
     { "name": "q.cmd.kitchen.dlq", "vhost": "/", "durable": true, "auto_delete": false, "arguments": {} },
     { "name": "q.cmd.invoice.dlq", "vhost": "/", "durable": true, "auto_delete": false, "arguments": {} }
   ],
   "bindings": [
-    { "source": "cmd.direct", "vhost": "/", "destination": "q.cmd.email",   "destination_type": "queue", "routing_key": "email.send",     "arguments": {} },
-    { "source": "cmd.direct", "vhost": "/", "destination": "q.cmd.kitchen", "destination_type": "queue", "routing_key": "kitchen.ticket", "arguments": {} },
-    { "source": "cmd.direct", "vhost": "/", "destination": "q.cmd.invoice", "destination_type": "queue", "routing_key": "invoice.gen",    "arguments": {} },
-
-    { "source": "cmd.topic", "vhost": "/", "destination": "q.cmd.email",   "destination_type": "queue", "routing_key": "email.*",        "arguments": {} },
-    { "source": "cmd.topic", "vhost": "/", "destination": "q.cmd.email",   "destination_type": "queue", "routing_key": "email.send.*",   "arguments": {} },
-    { "source": "cmd.topic", "vhost": "/", "destination": "q.cmd.kitchen", "destination_type": "queue", "routing_key": "kitchen.#",      "arguments": {} },
-    { "source": "cmd.topic", "vhost": "/", "destination": "q.cmd.invoice", "destination_type": "queue", "routing_key": "invoice.*",      "arguments": {} },
-    { "source": "cmd.topic", "vhost": "/", "destination": "q.cmd.invoice", "destination_type": "queue", "routing_key": "invoice.gen.*",  "arguments": {} },
-
+    { "source": "cmd.direct",   "vhost": "/", "destination": "q.cmd.email",       "destination_type": "queue", "routing_key": "email.send",     "arguments": {} },
+    { "source": "cmd.direct",   "vhost": "/", "destination": "q.cmd.kitchen",     "destination_type": "queue", "routing_key": "kitchen.ticket", "arguments": {} },
+    { "source": "cmd.direct",   "vhost": "/", "destination": "q.cmd.invoice",     "destination_type": "queue", "routing_key": "invoice.gen",    "arguments": {} },
+    { "source": "cmd.topic",    "vhost": "/", "destination": "q.cmd.email",       "destination_type": "queue", "routing_key": "email.#",        "arguments": {} },
+    { "source": "cmd.topic",    "vhost": "/", "destination": "q.cmd.kitchen",     "destination_type": "queue", "routing_key": "kitchen.#",      "arguments": {} },
+    { "source": "cmd.topic",    "vhost": "/", "destination": "q.cmd.invoice",     "destination_type": "queue", "routing_key": "invoice.#",      "arguments": {} },
     { "source": "cmd.dead.dlx", "vhost": "/", "destination": "q.cmd.email.dlq",   "destination_type": "queue", "routing_key": "email.send",     "arguments": {} },
     { "source": "cmd.dead.dlx", "vhost": "/", "destination": "q.cmd.kitchen.dlq", "destination_type": "queue", "routing_key": "kitchen.ticket", "arguments": {} },
     { "source": "cmd.dead.dlx", "vhost": "/", "destination": "q.cmd.invoice.dlq", "destination_type": "queue", "routing_key": "invoice.gen",    "arguments": {} }

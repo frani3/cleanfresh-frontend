@@ -36,7 +36,7 @@ cod=$(curl -s -o /dev/null -w '%{http_code}' "localhost:8083/api/notificaciones"
 [ "$cod" = "200" ] && ok "notificaciones: API de avisos responde (HTTP 200)" || fallo "notificaciones no responde (HTTP $cod)"
 topo=$(curl -s -m 15 localhost:8086/api/mq/topologia)
 [ "$(echo "$topo" | grep -o 'rabbit@rabbit[12] (activo)' | wc -l)" = "2" ] && ok "RabbitMQ: los dos nodos activos (visto por el administrador)" || fallo "RabbitMQ: el administrador no ve los dos nodos activos"
-[ "$(echo "$topo" | grep -o '"exchange":"cmd\.[a-z.]*"' | wc -l)" = "11" ] && ok "RabbitMQ: topología cargada (11 bindings)" || fallo "RabbitMQ: topología incompleta"
+[ "$(echo "$topo" | grep -o '"exchange":"cmd\.[a-z.]*"' | wc -l)" = "9" ] && ok "RabbitMQ: topología cargada (9 bindings)" || fallo "RabbitMQ: topología incompleta"
 
 echo "3) Bases de datos en la RDS (consulta directa con el usuario de cada servicio)"
 r=$(psql_en "$ORDERS_DB_USER" "$ORDERS_DB_PASSWORD" "$HO" orders_db "select count(*)||' órdenes, última '||max(numero_orden) from ordenes")

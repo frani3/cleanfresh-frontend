@@ -6,6 +6,10 @@ status: implemented
 
 # Spec 033 — Mensajería de comandos con un clúster RabbitMQ de dos nodos
 
+> **Actualizada por la [Spec 037](037-spec-topologia-como-la-guia.md):** la topología se alineó con la guía del profesor. El dead-letter
+> pasó de argumentos `x-dead-letter-*` a **políticas** (`policy.email.dlx`...) y los bindings de `cmd.topic` son `email.#`, `kitchen.#` e
+> `invoice.#` (9 bindings en total, no 11). Lo que sigue describe el diseño original y queda como historial.
+
 ## Qué debe hacer
 
 La pauta de la evaluación pide RabbitMQ para los comandos asíncronos (notificaciones, tickets,

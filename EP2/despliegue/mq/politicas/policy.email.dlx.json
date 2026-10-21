@@ -1,0 +1,11 @@
+{
+  "pattern": "^q\\.cmd\\.email$",
+  "apply-to": "queues",
+  "priority": 1,
+  "definition": {
+    "dead-letter-exchange": "cmd.dead.dlx",
+    "dead-letter-routing-key": "email.send",
+    "ha-mode": "all",
+    "ha-sync-mode": "automatic"
+  }
+}

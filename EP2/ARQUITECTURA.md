@@ -174,12 +174,12 @@ Puntos a tener en cuenta:
  orders (EC2 #2)                       EC2 #3 `cleanfresh-mq`  (clúster de 2 nodos, colas espejadas)
  publica comandos ───────────────►  ┌────────────────────────────────────────────────────────────┐
   (confirmación del broker,         │ cmd.direct (direct)  cmd.topic (topic)   cmd.dead.dlx      │
-   mensajes persistentes)           │      │  email.send        │ email.* / email.send.*  (direct)│
+   mensajes persistentes)           │      │  email.send        │ email.#              (direct)│
                                     │      │  kitchen.ticket    │ kitchen.#                       │
-                                    │      │  invoice.gen       │ invoice.* / invoice.gen.*       │
+                                    │      │  invoice.gen       │ invoice.#                       │
                                     │      ▼                    ▼                      ▲          │
                                     │  q.cmd.email    q.cmd.kitchen    q.cmd.invoice   │ rechazo  │
-                                    │      └── cada una con x-dead-letter-exchange ────┘          │
+                                    │      └── cada una con su policy.<flujo>.dlx ─────┘          │
                                     │  q.cmd.email.dlq  q.cmd.kitchen.dlq  q.cmd.invoice.dlq      │
                                     └───────┬─────────────────┬──────────────────┬───────────────┘
                                             │ ACK manual      │                  │
@@ -193,6 +193,10 @@ Puntos a tener en cuenta:
   └── solo por el BFF (`/api/mq/**`), rol Admin
 ```
 
+- **Topología de la guía del profesor (Spec 037):** las colas se crean sin argumentos; el dead-lettering lo dan tres
+  políticas (`policy.email.dlx`, `policy.kitchen.dlx`, `policy.invoice.dlx`) y hay 9 bindings (`email.#`, `kitchen.#`,
+  `invoice.#` en `cmd.topic`). Las políticas de DLX tienen prioridad 1 y llevan también la replicación, porque en RabbitMQ
+  solo rige una política por cola.
 - **Comandos:** al crear una orden `orders` publica `kitchen.ticket` y `email.send`; al despacharla, `email.send` e
   `invoice.gen`. Las órdenes de *Servicio exprés* usan `cmd.topic` con las variantes `.thermal`, `.high` y `.pdf`;
   las demás, `cmd.direct`. Todos van en un sobre común (`type`, `eventId`, `timestamp`, `traceId`,

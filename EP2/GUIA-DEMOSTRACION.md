@@ -52,7 +52,7 @@ cd EP2/despliegue
 
 Termina en `Todo OK`. Comprueba contenedores, respuesta de cada servicio,
 consulta directa a las tres bases, aislamiento entre bases, el clúster RabbitMQ visto por el
-administrador (dos nodos activos y 11 bindings) y los comandos por RabbitMQ: crea una orden y
+administrador (dos nodos activos y 9 bindings) y los comandos por RabbitMQ: crea una orden y
 comprueba el aviso a la sucursal y el ticket de taller, la despacha y comprueba el aviso al cliente y
 la boleta, sin duplicados.
 Si dice `Permission denied`, usar `bash verificar.sh`.
@@ -158,7 +158,8 @@ cada Stop/Start. En el panel:
 | **Overview → Nodes** | Los dos nodos (`rabbit@rabbit1`, `rabbit@rabbit2`) activos |
 | **Exchanges** | `cmd.direct` (direct), `cmd.topic` (topic), `cmd.dead.dlx` (direct) |
 | **Queues** | Las 6 colas; en `Node` y `+1` se ve que cada una tiene su espejo en el otro nodo |
-| **Queues → una cola → Bindings** | Qué claves la alimentan (`email.send`, `email.*`, `email.send.*`...) |
+| **Queues → una cola → Bindings** | Qué claves la alimentan (`email.send` por `cmd.direct` y `email.#` por `cmd.topic`...) |
+| **Queues** (columna *Features*) y **Admin → Policies** | Cada cola principal con su política de dead-lettering (`policy.email.dlx`, `policy.kitchen.dlx`, `policy.invoice.dlx`) y `ha-all`; abrir una política muestra el patrón, el DLX `cmd.dead.dlx` y su `dead-letter-routing-key` |
 
 **Clúster y topología** (desde el PC o la propia EC2, con el `.env` de `mq/`):
 

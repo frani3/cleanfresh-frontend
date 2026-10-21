@@ -336,6 +336,9 @@ están en [`despliegue/mq/`](despliegue/mq/) y [`despliegue/`](despliegue/). Con
 
 ### 10.1 Clúster en su propia EC2 (ACs 1–7)
 
+> La topología de este apartado (11 bindings, DLX por argumento) la reemplazó la Spec 037 por la de la guía del profesor (9 bindings,
+> DLX por política): ver la sección 13.
+
 EC2 `cleanfresh-mq` (`t3.medium`, grupo de seguridad `cleanfresh-sg-mq`: AMQP 5672–5673 y API de
 administración 15672–15673 solo desde `cleanfresh-sg-ms`; panel y SSH solo desde la IP del autor). Dos
 contenedores (`rabbit1`, `rabbit2`) con `docker compose`. `verificar-mq.sh` contra esa EC2 (tres corridas
