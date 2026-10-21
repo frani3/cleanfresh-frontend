@@ -6,6 +6,8 @@
 #      cuando el servicio vuelve, el Operador recibe el aviso.
 #   4. Operador -> Cliente: el Operador cambia el estado y el Cliente recibe el aviso.
 #   5. Operador -> Cliente con el servicio CAÍDO: lo mismo, el aviso espera y llega al volver.
+# En los pasos con el servicio caído muestra además el TIPO de notificación de cada mensaje que espera (propiedad `type`:
+# ORDEN_CREADA, ORDEN_LISTA u ORDEN_ESTADO), que es lo mismo que enseña la consola de RabbitMQ en Get messages.
 #
 # Uso (en la EC2 de microservicios):   ./demo-notificaciones.sh
 #       con pausas para mostrar la consola:  ./demo-notificaciones.sh --pausas   (usar `ssh -t`)
@@ -39,6 +41,25 @@ colas() {
     linea="$linea $q: $(mensajes $q) mensaje(s) ($(campo $q messages_persistent) persistentes), $(consumidores $q) consumidor(es);"
   done
   info "RabbitMQ ->$linea"
+}
+# Mensajes que esperan en una cola, con el tipo de notificación (propiedad `type`) y las cabeceras que muestra la consola de
+# RabbitMQ en Queues -> cola -> Get messages (Spec 039). Se leen devolviéndolos a la cola: no se consumen.
+contenido_cola() {
+  curl -s -m 10 -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" -X POST -H 'content-type: application/json' \
+    -d '{"count":5,"ackmode":"ack_requeue_true","encoding":"auto"}' "$MQ_API/queues/%2F/$1/get" | python3 -c "
+import sys, json
+for m in json.load(sys.stdin):
+    p = m.get('properties', {}); h = p.get('headers', {})
+    print('       esperando en $1 -> TIPO (type):', p.get('type'), '| clave:', m.get('routing_key'), '| destinatario:', h.get('destinatario'), '| estado de la orden:', h.get('estado'), '| orden:', p.get('correlation_id'))" 2>/dev/null
+}
+# tipo y destinatario del primer mensaje de una cola, como "TIPO/DESTINATARIO"
+tipo_en_cola() {
+  curl -s -m 10 -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" -X POST -H 'content-type: application/json' \
+    -d '{"count":1,"ackmode":"ack_requeue_true","encoding":"auto"}' "$MQ_API/queues/%2F/$1/get" | python3 -c "
+import sys, json
+m = json.load(sys.stdin)
+p = m[0].get('properties', {}) if m else {}
+print(str(p.get('type')) + '/' + str(p.get('headers', {}).get('destinatario')))" 2>/dev/null
 }
 quien_consume() {
   api consumers | python3 -c "
@@ -100,7 +121,11 @@ if esperar "[ \"\$(mensajes q.cmd.email)\" -ge 1 ] && [ \"\$(mensajes q.cmd.kitc
   ok "los comandos de $N2 esperan en las colas, sin consumidor"
 else fallo "no aparecieron mensajes esperando en q.cmd.email y q.cmd.kitchen"; fi
 colas
-info "En la consola: Queues -> Ready = 1; q.cmd.email -> Get messages (Nack message requeue true) muestra el JSON."
+contenido_cola q.cmd.email
+contenido_cola q.cmd.kitchen
+t=$(tipo_en_cola q.cmd.email)
+[ "$t" = "ORDEN_CREADA/SUCURSAL" ] && ok "el mensaje que espera en q.cmd.email es de tipo ORDEN_CREADA, dirigido a la SUCURSAL (el aviso al Operador)" || fallo "el tipo del mensaje en q.cmd.email es $t (se esperaba ORDEN_CREADA/SUCURSAL)"
+info "En la consola: Queues -> q.cmd.email -> Get messages (Ack mode: Nack message requeue true) -> Properties: type = ORDEN_CREADA, headers: destinatario, estado."
 pausa
 
 paso "Vuelve el servicio: el Operador recibe la notificación que esperaba"
@@ -126,6 +151,9 @@ esperar "[ \"\$(consumidores q.cmd.email)\" = 0 ]" 40 && ok "notificaciones caí
 [ "$(cambiar_estado "$N1" EN_PREPARACION)" = "200" ] && ok "el Operador pasó $N1 a EN_PREPARACION con el servicio caído (el cambio se guarda igual)" || fallo "no se pudo cambiar el estado con el servicio caído"
 esperar "[ \"\$(mensajes q.cmd.email)\" -ge 1 ]" 40 && ok "el aviso para el cliente espera en q.cmd.email" || fallo "no apareció el aviso esperando en q.cmd.email"
 colas
+contenido_cola q.cmd.email
+t=$(tipo_en_cola q.cmd.email)
+[ "$t" = "ORDEN_ESTADO/CLIENTE" ] && ok "el mensaje que espera es de tipo ORDEN_ESTADO, dirigido al CLIENTE (cambio de estado de su pedido)" || fallo "el tipo del mensaje en q.cmd.email es $t (se esperaba ORDEN_ESTADO/CLIENTE)"
 pausa
 levantar
 if esperar "avisos_cliente | grep -q 'está en preparación'" 60; then
