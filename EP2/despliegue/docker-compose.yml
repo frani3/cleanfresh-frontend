@@ -1,4 +1,4 @@
-# EC2 #2 (EP2): los 5 microservicios. El BFF corre aparte en la EC2 #1.
+# EC2 #2 (EP2): los 6 microservicios (con el administrador de RabbitMQ). El BFF corre aparte en la EC2 #1.
 # Se espera que los repos estén clonados lado a lado (../../../ms-cleanfresh-*).
 # Variables en el archivo .env junto a este (ver .env.example); no se sube a git.
 # Cada JVM con su heap acotado: con el valor por defecto (1/4 de la RAM) cinco
@@ -16,10 +16,10 @@ services:
       DB_URL: ${ORDERS_DB_URL}
       DB_USER: ${ORDERS_DB_USER}
       DB_PASSWORD: ${ORDERS_DB_PASSWORD}
-      SQS_ENABLED: ${SQS_ENABLED:-false}
-      SQS_QUEUE_URL: ${SQS_QUEUE_URL:-}
-      SQS_ENDPOINT: ${SQS_ENDPOINT:-}
-      AWS_REGION: ${AWS_REGION:-us-east-1}
+      RABBIT_ENABLED: ${RABBIT_ENABLED:-false}
+      RABBITMQ_ADDRESSES: ${RABBITMQ_ADDRESSES:-localhost:5672}
+      RABBITMQ_USER: ${RABBITMQ_USER:-}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-}
 
   catalog:
     build: ../../../ms-cleanfresh-catalog
@@ -40,10 +40,20 @@ services:
       DB_URL: ${NOTIFICACIONES_DB_URL}
       DB_USER: ${NOTIFICACIONES_DB_USER}
       DB_PASSWORD: ${NOTIFICACIONES_DB_PASSWORD}
-      SQS_ENABLED: ${SQS_ENABLED:-false}
-      SQS_QUEUE_URL: ${SQS_QUEUE_URL:-}
-      SQS_ENDPOINT: ${SQS_ENDPOINT:-}
-      AWS_REGION: ${AWS_REGION:-us-east-1}
+      RABBIT_ENABLED: ${RABBIT_ENABLED:-false}
+      RABBITMQ_ADDRESSES: ${RABBITMQ_ADDRESSES:-localhost:5672}
+      RABBITMQ_USER: ${RABBITMQ_USER:-}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-}
+
+  mq-admin:
+    build: ../../../ms-cleanfresh-mq-admin
+    ports: ["8086:8086"]
+    restart: unless-stopped
+    environment:
+      <<: *jvm
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      RABBITMQ_MGMT_URLS: ${RABBITMQ_MGMT_URLS:-http://localhost:15672/api,http://localhost:15673/api}
 
   reportes:
     build: ../../../ms-cleanfresh-reportes

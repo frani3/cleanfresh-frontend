@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Verifica en la EC2 #2 que lo implementado en EP2 sigue funcionando:
-# contenedores, bases en la RDS, aislamiento entre bases, cola SQS y avisos
-# dirigidos (al Operador cuando entra un pedido, al Cliente cuando queda listo).
+# contenedores, bases en la RDS, aislamiento entre bases, el clúster RabbitMQ y los comandos
+# que viajan por él (aviso dirigido al Operador/Cliente, ticket de taller y boleta).
 # Uso:  ./verificar.sh              (crea 1 orden de prueba y la despacha)
 #       ./verificar.sh --reiniciar  (además reinicia orders y comprueba persistencia)
 # Requiere el .env de esta carpeta (credenciales de las bases) y Docker.
@@ -22,7 +22,7 @@ sin_acceso() { [[ "$1" == *"permission denied"* || "$1" == *"CONNECT"* ]]; }
 HO=$(host_de "$ORDERS_DB_URL"); HC=$(host_de "$CATALOG_DB_URL"); HN=$(host_de "${NOTIFICACIONES_DB_URL:-jdbc:postgresql://sin-configurar/x}")
 
 echo "1) Contenedores"
-for s in orders catalog notificaciones reportes auditoria; do
+for s in orders catalog notificaciones mq-admin reportes auditoria; do
   est=$(docker compose ps --format '{{.Service}} {{.Status}}' | grep "^$s " )
   [[ "$est" == *"Up"* ]] && ok "$est" || fallo "$s no está Up"
 done
@@ -34,6 +34,9 @@ curl -s localhost:8084/api/reportes  | grep -q '"branch"' && ok "reportes: respu
 curl -s localhost:8085/api/auditoria | grep -q '"actor"'  && ok "auditoria: respuesta fija" || fallo "auditoria"
 cod=$(curl -s -o /dev/null -w '%{http_code}' "localhost:8083/api/notificaciones")
 [ "$cod" = "200" ] && ok "notificaciones: API de avisos responde (HTTP 200)" || fallo "notificaciones no responde (HTTP $cod)"
+topo=$(curl -s -m 15 localhost:8086/api/mq/topologia)
+[ "$(echo "$topo" | grep -o 'rabbit@rabbit[12] (activo)' | wc -l)" = "2" ] && ok "RabbitMQ: los dos nodos activos (visto por el administrador)" || fallo "RabbitMQ: el administrador no ve los dos nodos activos"
+[ "$(echo "$topo" | grep -o '"exchange":"cmd\.[a-z.]*"' | wc -l)" = "11" ] && ok "RabbitMQ: topología cargada (11 bindings)" || fallo "RabbitMQ: topología incompleta"
 
 echo "3) Bases de datos en la RDS (consulta directa con el usuario de cada servicio)"
 r=$(psql_en "$ORDERS_DB_USER" "$ORDERS_DB_PASSWORD" "$HO" orders_db "select count(*)||' órdenes, última '||max(numero_orden) from ordenes")
@@ -53,7 +56,7 @@ sin_acceso "$r" && ok "orders_user NO puede entrar a notificaciones_db" || fallo
 r=$(psql_en "${NOTIFICACIONES_DB_USER:-x}" "${NOTIFICACIONES_DB_PASSWORD:-x}" "$HO" orders_db "select 1")
 sin_acceso "$r" && ok "notificaciones_user NO puede entrar a orders_db" || fallo "notificaciones_user entró a orders_db: $r"
 
-echo "5) Avisos por SQS: pedido nuevo -> Operador; pedido listo -> Cliente"
+echo "5) Comandos por RabbitMQ: aviso al Operador/Cliente, ticket de taller y boleta"
 marca="Verificacion-$(date +%H%M%S)"
 resp=$(curl -s -X POST localhost:8081/api/orders -H 'Content-Type: application/json' \
   -d "{\"cliente\":\"$marca\",\"servicio\":\"Planchado\",\"total\":9500,\"sucursal\":\"Providencia\"}")
@@ -65,8 +68,11 @@ else
   if esperar "curl -s 'localhost:8083/api/notificaciones?sucursal=Providencia' | grep -q '\"ORDEN_CREADA\".*\"numeroOrden\":\"$num\"\\|\"numeroOrden\":\"$num\".*\"ORDEN_CREADA\"'"; then
     ok "aviso al Operador de Providencia: $(curl -s 'localhost:8083/api/notificaciones?sucursal=Providencia' | grep -o "\"mensaje\":\"Nuevo pedido $num[^\"]*" | sed 's/"mensaje":"//' | head -1)"
   else
-    fallo "no apareció el aviso de pedido nuevo para $num (revisar SQS_ENABLED, SQS_QUEUE_URL y el perfil IAM)"
+    fallo "no apareció el aviso de pedido nuevo para $num (revisar RABBIT_ENABLED, RABBITMQ_ADDRESSES y el grupo de seguridad de la EC2 de RabbitMQ)"
   fi
+  esperar "curl -s localhost:8083/api/tickets | grep -q '\"numeroOrden\":\"$num\"'" && ok "ticket de taller registrado para $num (q.cmd.kitchen)" || fallo "no apareció el ticket de taller de $num"
+  boleta_antes=$(curl -s localhost:8083/api/boletas | grep -c "\"numeroOrden\":\"$num\"")
+  [ "$boleta_antes" = "0" ] && ok "todavía no hay boleta (la orden no está despachada)" || fallo "ya había boleta antes de despachar"
   sin=$(curl -s "localhost:8083/api/notificaciones?cliente=$marca" | grep -o '"numeroOrden"' | wc -l)
   [ "$sin" = "0" ] && ok "el Cliente aún no tiene avisos (la orden no está lista)" || fallo "el Cliente ya tenía $sin aviso(s) antes de despachar"
 
@@ -81,12 +87,13 @@ else
   else
     fallo "no apareció el aviso de pedido listo para $marca"
   fi
+  esperar "curl -s localhost:8083/api/boletas | grep -q '\"numeroOrden\":\"$num\"'" && ok "boleta registrada: $(curl -s localhost:8083/api/boletas | grep -o "\"numeroBoleta\":\"[^\"]*\",\"numeroOrden\":\"$num\"" | cut -d'"' -f4)" || fallo "no apareció la boleta de $num (q.cmd.invoice)"
   sleep 4
   dup=$(curl -s "localhost:8083/api/notificaciones?cliente=$marca" | grep -o '"numeroOrden"' | wc -l)
   [ "$dup" = "1" ] && ok "despachar dos veces no duplica el aviso ($dup aviso)" || fallo "el Cliente tiene $dup avisos de $num (se esperaba 1)"
   m=$(curl -s -X PUT "localhost:8083/api/notificaciones/leidas?cliente=$marca" | grep -o '[0-9]*' | head -1)
   [ "$m" = "1" ] && ok "marcar leídos solo afecta a ese Cliente ($m aviso)" || fallo "marcar leídos devolvió: $m"
-  docker compose logs --since 3m orders 2>&1 | grep -q "No se pudo publicar" && fallo "orders no pudo publicar en SQS" || ok "orders sin errores de publicación"
+  docker compose logs --since 3m orders 2>&1 | grep -q "No se pudo publicar" && fallo "orders no pudo publicar en RabbitMQ" || ok "orders sin errores de publicación"
 fi
 
 if [ "${1:-}" = "--reiniciar" ]; then
