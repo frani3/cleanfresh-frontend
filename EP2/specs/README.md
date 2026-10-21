@@ -19,3 +19,4 @@ del índice de EP1; la plantilla está en
 | 031 | Spec | Búsqueda y navegación de órdenes (Operador y Admin) | ✅ Verificado (datos simulados) | [031-spec-busqueda-ordenes.md](031-spec-busqueda-ordenes.md) |
 | 032 | Spec | Nombre legible del cliente y sucursal elegible al solicitar | ✅ Verificado | [032-spec-nombre-cliente-y-sucursal.md](032-spec-nombre-cliente-y-sucursal.md) |
 | 033 | Spec | Mensajería de comandos con un clúster RabbitMQ de dos nodos (reemplaza a SQS) | ✅ Implementada y verificada en AWS (con pendientes menores, ver la spec) | [033-spec-rabbitmq.md](033-spec-rabbitmq.md) |
+| 034 | Spec | Módulo propio de notificaciones con botón de leído | 🟡 Implementada y verificada en local (falta el despliegue en AWS) | [034-spec-modulo-notificaciones.md](034-spec-modulo-notificaciones.md) |

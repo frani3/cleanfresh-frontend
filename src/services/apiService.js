@@ -119,3 +119,11 @@ export async function markNotificationsRead(sucursal) {
     params: sucursal ? { sucursal } : undefined,
   });
 }
+
+// Spec 034: marca UN aviso como leído. El BFF toma el destinatario del token; el Operador
+// manda su sucursal en turno. Un aviso ajeno o inexistente responde 404.
+export async function markNotificationRead(id, sucursal) {
+  await apiClient.post(`/notificaciones/${encodeURIComponent(id)}/leida`, null, {
+    params: sucursal ? { sucursal } : undefined,
+  });
+}

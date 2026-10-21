@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "react-oidc-context";
 import {
   Activity,
+  Bell,
   DollarSign,
   Package,
   Loader,
@@ -31,6 +32,8 @@ import {
 } from "lucide-react";
 import { getHealth, getCatalog, getOrders, createOrder, updateOrderStatus } from "../services/apiService";
 import NotificationBell from "../components/NotificationBell";
+import NotificationsPanel from "../components/NotificationsPanel";
+import useNotifications from "../hooks/useNotifications";
 import OrderFilters, { OrderListFooter } from "../components/OrderFilters";
 import useOrderFilters from "../hooks/useOrderFilters";
 
@@ -97,9 +100,9 @@ function formatCLP(value) {
    kpi-stat.tsx, status-badge.tsx, service-card.tsx)
    ========================================================= */
 
-function BentoCard({ title, subtitle, icon: Icon, className, children }) {
+function BentoCard({ id, title, subtitle, icon: Icon, className, children }) {
   return (
-    <section className={`bento2-card ${className || ""}`}>
+    <section id={id} className={`bento2-card ${className || ""}`}>
       <div className="bento2-card-head">
         <div className="bento2-card-head-left">
           {Icon && (
@@ -907,6 +910,7 @@ function RequestServiceModal({ service, initialBranch, onCreate, onClose }) {
 
 const ADMIN_TABS = [
   { key: "orders", label: "Órdenes recientes", subtitle: "Actividad en tiempo real", icon: ClipboardList },
+  { key: "notifications", label: "Notificaciones", subtitle: "Avisos de todos los usuarios (solo lectura)", icon: Bell },
   { key: "catalog", label: "Catálogo", subtitle: "Servicios disponibles", icon: LayoutGrid },
   { key: "branches", label: "Analítica por sucursal", subtitle: "Órdenes e ingresos", icon: BarChart3 },
   { key: "audit", label: "Registro de auditoría", subtitle: "Eventos de seguridad", icon: ShieldCheck },
@@ -925,6 +929,8 @@ function AdminView({
   onUpdateOrder,
   onDeleteOrder,
   onRefreshOrders,
+  notifications,
+  notifRequest,
 }) {
   const revenue = orders.reduce((sum, o) => sum + o.price, 0);
   const active = orders.filter((o) => o.status !== "ENTREGADO").length;
@@ -937,6 +943,11 @@ function AdminView({
   const [deleteServiceTarget, setDeleteServiceTarget] = useState(null); // null | service object
   const [catalogBranch, setCatalogBranch] = useState(BRANCHES[0]);
   const [activeTab, setActiveTab] = useState("orders");
+
+  // Spec 034: la campanita del encabezado pide abrir la pestaña de notificaciones.
+  useEffect(() => {
+    if (notifRequest) setActiveTab("notifications");
+  }, [notifRequest]);
 
   // Spec 031: búsqueda, filtros, orden y paginado compartidos con el Operador.
   const orderFilters = useOrderFilters(orders);
@@ -1038,7 +1049,10 @@ function AdminView({
         subtitle={currentTab.subtitle}
         icon={currentTab.icon}
         className="admin-tab-panel"
+        id={activeTab === "notifications" ? "modulo-notificaciones" : undefined}
       >
+        {activeTab === "notifications" && <NotificationsPanel notifications={notifications} orders={orders} />}
+
         {activeTab === "orders" && (
           <>
             <div className="orders2-actions">
@@ -1261,6 +1275,7 @@ function OperadorView({
   sucursal,
   onSucursalChange,
   onRefreshOrders,
+  notifications,
 }) {
   const [query, setQuery] = useState("");
   const [viewOrder, setViewOrder] = useState(null);
@@ -1303,6 +1318,16 @@ function OperadorView({
           <KpiStat label="Órdenes exprés" value={String(express)} icon={Zap} accent="kpi2-icon-violet" />
           <KpiStat label="En despacho" value={String(pipeline)} icon={Truck} accent="kpi2-icon-sky" />
         </div>
+      </BentoCard>
+
+      <BentoCard
+        id="modulo-notificaciones"
+        title="Notificaciones"
+        subtitle={notifications.unread > 0 ? `${notifications.unread} sin leer · pedidos de ${sucursal}` : `Estás al día · pedidos de ${sucursal}`}
+        icon={Bell}
+        className="card-op-notifs"
+      >
+        <NotificationsPanel notifications={notifications} />
       </BentoCard>
 
       <BentoCard title="Gestión de órdenes" subtitle="Consulta y ajusta el estado de cada orden" icon={KanbanSquare} className="card-op-orders">
@@ -1403,7 +1428,7 @@ function OperadorView({
    Vista Cliente
    ========================================================= */
 
-function ClienteView({ services, orders, cognitoUsername, onRequestOrder }) {
+function ClienteView({ services, orders, cognitoUsername, onRequestOrder, notifications }) {
   const progress = Math.min(100, (POINTS / POINTS_GOAL) * 100);
   const [viewOrder, setViewOrder] = useState(null);
   const [requestingService, setRequestingService] = useState(null);
@@ -1425,6 +1450,16 @@ function ClienteView({ services, orders, cognitoUsername, onRequestOrder }) {
 
   return (
     <div className="bento2-grid role-cliente">
+      <BentoCard
+        id="modulo-notificaciones"
+        title="Notificaciones"
+        subtitle={notifications.unread > 0 ? `${notifications.unread} sin leer` : "Estás al día"}
+        icon={Bell}
+        className="card-cli-notifs"
+      >
+        <NotificationsPanel notifications={notifications} />
+      </BentoCard>
+
       <BentoCard title="Puntos de fidelidad" subtitle="Clean&Fresh Rewards" icon={Gift} className="card-loyalty">
         <div className="loyalty2-hero">
           <div className="loyalty2-label">
@@ -1583,6 +1618,8 @@ function BentoDashboard() {
   // de la lista; cambiarla dispara un pedido nuevo al BFF, no filtra
   // client-side sobre datos ya traídos.
   const [operadorSucursal, setOperadorSucursal] = useState(BRANCHES[0]);
+  // Spec 034: cuenta cuántas veces se pidió ir al módulo de notificaciones (lo usa la pestaña del Admin).
+  const [notifRequest, setNotifRequest] = useState(0);
 
   // Llamada real al BFF (GET /api/health) — solo para Admin, que es quien
   // ve la tarjeta "Estado del sistema".
@@ -1745,6 +1782,21 @@ function BentoDashboard() {
 
   const dataLoaded = catalogLoaded && ordersLoaded;
 
+  // Spec 034: una sola consulta de avisos para la campanita y el módulo. El Admin los ve en solo lectura.
+  const notifications = useNotifications({
+    sucursal: roleVariant === "operador" ? operadorSucursal : undefined,
+    readOnly: isAdmin,
+    enabled: rolesLoaded && !!account && dataLoaded,
+  });
+
+  // La campanita lleva al módulo: abre la pestaña (Admin) y baja hasta él.
+  const goToNotifications = () => {
+    if (isAdmin) setNotifRequest((n) => n + 1);
+    setTimeout(() => {
+      document.getElementById("modulo-notificaciones")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 60);
+  };
+
   if (dataError) {
     return (
       <div className="bento-loading">
@@ -1777,10 +1829,7 @@ function BentoDashboard() {
             {roleVariant === "cliente" && "Sigue tus pedidos y solicita nuevos servicios."}
           </p>
         </div>
-        <NotificationBell
-          roleVariant={roleVariant}
-          sucursal={roleVariant === "operador" ? operadorSucursal : undefined}
-        />
+        <NotificationBell unread={notifications.unread} onClick={goToNotifications} />
       </div>
 
       {statusError && (
@@ -1806,6 +1855,8 @@ function BentoDashboard() {
           onUpdateOrder={updateOrder}
           onDeleteOrder={deleteOrder}
           onRefreshOrders={fetchOrders}
+          notifications={notifications}
+          notifRequest={notifRequest}
         />
       )}
       {roleVariant === "operador" && (
@@ -1817,6 +1868,7 @@ function BentoDashboard() {
           sucursal={operadorSucursal}
           onSucursalChange={setOperadorSucursal}
           onRefreshOrders={fetchOrders}
+          notifications={notifications}
         />
       )}
       {roleVariant === "cliente" && (
@@ -1825,6 +1877,7 @@ function BentoDashboard() {
           orders={orders}
           cognitoUsername={cognitoUsername}
           onRequestOrder={requestOrder}
+          notifications={notifications}
         />
       )}
     </main>
