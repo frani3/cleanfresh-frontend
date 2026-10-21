@@ -289,9 +289,13 @@ en el contador de la campanita del encabezado.
    aparece **"Nuevo pedido ORD-00XX ..."** resaltado, con el contador de la campanita. Verlo **no** lo marca
    como leído: se usa **Marcar leído** (por aviso) o **Marcar todas leídas**; el filtro **Sin leer** muestra solo
    los pendientes.
-3. **Operador:** abre la orden con **Ver → Ajustar estado → Despachado → Confirmar cambio** (se guarda en el backend).
-4. **Cliente:** en unos segundos (la app consulta cada 15 s) su tarjeta muestra **"Tu pedido ORD-00XX (...) está
-   listo"**; al pulsar **Marcar leído** el contador de la campanita baja.
+3. **Operador:** abre la orden con **Ver → Ajustar estado** y la lleva por los estados (Aceptado, En preparación,
+   Despachado, Entregado; también puede saltar estados o cancelar) con **Confirmar cambio**. Cada cambio se guarda en el
+   backend.
+4. **Cliente:** **sin recargar la página** (se actualiza sola cada 15 s y al llegar cada aviso) ve en **Tus pedidos**
+   el estado nuevo y en su tarjeta un aviso por cada cambio: **"Tu pedido ORD-00XX (...) fue aceptado"**, **"está en
+   preparación"**, **"está listo"** (al despachar, con la boleta), **"fue entregado"** o **"fue cancelado"**. Al pulsar
+   **Marcar leído** el contador de la campanita baja.
 5. **Admin:** en la pestaña **Notificaciones** ve los avisos de todos, con "Para: Sucursal Providencia" o
    "Para: Cliente <nombre>", en **solo lectura** (sin botones ni contador, para no borrarles los pendientes a
    los demás). Pulsar la campanita abre esa pestaña.

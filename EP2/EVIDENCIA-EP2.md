@@ -476,3 +476,52 @@ La cola `cleanfresh-ordenes` estaba vacía y era la única de la cuenta. Se elim
 (`sqs delete-queue`); `sqs list-queues` devolvió `None` tras el borrado (el listado tardó unos segundos en
 reflejarlo). Se quitaron el código y las dependencias de SQS de `orders` y `notificaciones`, y `SQS_*` / `AWS_REGION`
 del `.env` y del `docker-compose.yml`.
+
+## 11. Avisos por cada cambio de estado y actualización automática (Spec 035)
+
+Detalle y criterios en [`specs/035-spec-avisos-por-estado-y-actualizacion-automatica.md`](specs/035-spec-avisos-por-estado-y-actualizacion-automatica.md).
+Capturas en [`capturas/035/`](capturas/035/).
+
+**Causa del problema.** Una orden real (`ORD-0013`) estaba en ENTREGADO y su Cliente no tenía ningún aviso: hasta la
+Spec 034 solo se avisaba al pasar a DESPACHADO. Además "Tus pedidos" se cargaba una sola vez.
+
+### 11.1 Migración de la restricción única (RDS)
+
+Las pruebas con H2 fallaron al guardar el segundo aviso de estado de una orden: `Violación de índice de Unicidad ...
+NOTIFICACIONES(TIPO, NUMERO_ORDEN)`. La tabla tenía una restricción única `(tipo, numero_orden)` que `ddl-auto: update` no
+elimina. Se cambió a `(tipo, numero_orden, mensaje)` y `MigracionEsquema` la quita al arrancar. En la RDS:
+
+```
+Migración (Spec 035): se eliminó la restricción única uk54jum8ll46fajl6l26mxt8cjo de notificaciones (tipo, numero_orden)
+restricciones únicas de notificaciones en la RDS:
+ukb0n7l67yt9g5l58g1cxuvvjyh  UNIQUE (tipo, numero_orden, mensaje)
+```
+
+### 11.2 Una orden recorre los estados (EC2 #2, servicios reales)
+
+```
+orden ORD-0014: CREADO -> ACEPTADO (x2) -> EN_PREPARACION -> DESPACHADO -> ENTREGADO
+   el Cliente todavía no tiene avisos: 0
+    ORDEN_ESTADO | Tu pedido ORD-0014 (Planchado) fue aceptado
+    ORDEN_ESTADO | Tu pedido ORD-0014 (Planchado) está en preparación
+    ORDEN_LISTA  | Tu pedido ORD-0014 (Planchado) está listo
+    ORDEN_ESTADO | Tu pedido ORD-0014 (Planchado) fue entregado
+   avisos: 4 (el ACEPTADO repetido no duplicó) · boleta de ORD-0014: 1
+orden exprés ORD-0015: CREADO -> ENTREGADO (salto) -> CANCELADO
+    ORDEN_ESTADO | Tu pedido ORD-0015 (Servicio exprés) fue entregado
+    ORDEN_ESTADO | Tu pedido ORD-0015 (Servicio exprés) fue cancelado
+colas q.cmd.email / kitchen / invoice y sus tres .dlq: 0 mensajes
+```
+
+`verificar.sh` y `verificar-flujo.sh` en la EC2 #2 después del despliegue: "Todo OK".
+
+### 11.3 La pantalla se actualiza sola (Chrome, API simulada con estado)
+
+| Rol | Comprobación | Resultado |
+|---|---|---|
+| Cliente | Cambia el estado en el servidor, sin aviso | "Tus pedidos" pasa a "Aceptado" a los 9 s, sin recargar |
+| Cliente | Llega un aviso "está en preparación" | Aparece en el módulo con la etiqueta "Estado del pedido" y las órdenes se refrescan en los 2,5 s siguientes ("En preparación") |
+| Cliente | La consulta de órdenes falla | La pantalla sigue mostrando lo que había; al volver, se actualiza sola a "Entregado" |
+| Operador | Llega un pedido nuevo (aviso) | ORD-0014 aparece en su lista a los 7 s, sin pulsar "Actualizar"; la búsqueda escrita y la ventana de orden abierta siguen |
+| Operador | Sin avisos nuevos | 0 consultas de órdenes en 31 s |
+| Admin | Llega un aviso | 0 consultas de órdenes en 33 s; ve el aviso en su pestaña con la etiqueta "Estado del pedido" |

@@ -1,7 +1,7 @@
 ---
 id: 035
 type: spec
-status: approved
+status: verified
 ---
 
 # Spec 035 — Avisos al Cliente en cada cambio de estado y "Tus pedidos" que se actualiza solo
@@ -93,4 +93,41 @@ el estado nuevo. Esta spec hace que se actualice sola.
 
 ## Verificación
 
-⏳ Pendiente de aprobación.
+Fases: A backend (`orders`, `notificaciones`), B frontend, C verificación en el navegador, D despliegue en AWS.
+Capturas en `EP2/capturas/035/`. Salidas completas en [`EVIDENCIA-EP2.md`](../EVIDENCIA-EP2.md), sección 11.
+
+**Backend.** `orders`: 38 pruebas (10 nuevas); `notificaciones`: 54 (9 nuevas, incluida la lectura del sobre con y sin
+`estado`). Contra un **Postgres y RabbitMQ reales en local**: una orden recorrió Creado → Aceptado (dos veces) →
+En preparación → Despachado → Entregado y el Cliente recibió 4 avisos (el `ACEPTADO` repetido no duplicó,
+`DESPACHADO` sigue siendo "está listo"); una orden exprés saltó de Creado a Entregado y luego a Cancelado y recibió
+los dos avisos; el Operador no recibió ninguno de estado.
+
+**Hallazgo en la verificación (migración).** La tabla `notificaciones` tenía una restricción única
+`(tipo, numero_orden)` en la base, de la Spec 030, que impedía el segundo aviso de estado de una orden. Las pruebas
+con H2 lo mostraron (`Violación de índice de Unicidad`). Se cambió a `(tipo, numero_orden, mensaje)` y se agregó
+`MigracionEsquema`, que quita la vieja al arrancar en una base que ya existe. Se probó contra el Postgres local y
+corrió en la RDS (ver más abajo).
+
+**Frontend.** Build sin errores ni advertencias; 11 pruebas de la lógica pura. Verificación en Chrome con sesión y
+API simuladas (con estado), un script por rol:
+
+| # | AC | Estado |
+|---|---|---|
+| 1–5 | Un aviso por cada cambio de estado (texto, repetidos, eventId, destinatario, falla de publicación) | ✅ Cumple (pruebas automáticas y recorrido real, local y AWS) |
+| 6 | Etiqueta del aviso de estado | ✅ Cumple: "Estado del pedido" en el módulo del Cliente y del Admin |
+| 7 | El Cliente ve el estado nuevo sin recargar | ✅ Cumple: por la consulta periódica en 9 s (≤ 15 s); al llegar un aviso, las órdenes se refrescan en los 2,5 s siguientes y "Tus pedidos" pasa a "En preparación" |
+| 8 | El Operador ve un pedido nuevo sin pulsar "Actualizar" | ✅ Cumple: ORD-0014 apareció a los 7 s (llegó su aviso) |
+| 9 | No interrumpe lo que se hace; el Admin no se toca | ✅ Cumple: la búsqueda escrita y la ventana de la orden abierta siguen tras el refresco; con la consulta de órdenes fallando la pantalla no se rompe y se recupera sola; el Operador sin avisos nuevos no consulta nada (0 en 31 s); el Admin no consulta las órdenes solo (0 en 33 s, aunque llegue un aviso) |
+| 10 | Pruebas, build y AWS | ✅ Cumple (ver abajo) |
+
+**AWS.** `notificaciones` y `orders` reconstruidos (primero `notificaciones`, porque la migración corre al arrancar y
+el sobre nuevo es compatible hacia atrás). En la RDS la migración registró
+`se eliminó la restricción única uk54jum8… de notificaciones (tipo, numero_orden)` y quedó
+`UNIQUE (tipo, numero_orden, mensaje)`. Una orden real recorrió todos los estados con los 4 avisos esperados y su
+boleta; la orden exprés (salto a Entregado y Cancelado) recibió sus 2 avisos; las 6 colas y DLQ quedaron en 0.
+`verificar.sh` y `verificar-flujo.sh`: "Todo OK".
+
+**Límites.** El Operador sigue pudiendo saltar estados (no se impide, a pedido). Volver a `CREADO` no avisa. Al
+refrescarse la lista del Operador por un aviso nuevo se pierde el historial de cambios de esa sesión que el
+frontend arma en memoria (lo mismo que pasa hoy al pulsar "Actualizar"). Falta probarlo en la app real con los
+tres usuarios.
