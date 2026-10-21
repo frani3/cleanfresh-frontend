@@ -629,3 +629,38 @@ Detalle en [`specs/038-spec-demostracion-notificaciones.md`](specs/038-spec-demo
   OK   el cliente tiene exactamente 2 avisos de ORD-0027 (aceptado y en preparación), sin duplicados
 Demostración completa: las notificaciones llegan en los dos sentidos y, aunque el servicio se caiga, RabbitMQ las conserva y se entregan al volver.
 ```
+
+## 15. El tipo de notificación visible en la consola de RabbitMQ (Spec 039)
+
+Detalle en [`specs/039-spec-tipo-de-notificacion-en-rabbitmq.md`](specs/039-spec-tipo-de-notificacion-en-rabbitmq.md). Lo que devuelve la API del panel (la misma
+información que muestra **Queues → cola → Get messages**) para una orden de Servicio exprés hecha con `notificaciones` caído, en AWS:
+
+```
+== Queues -> q.cmd.email -> Get messages (Ack mode: Nack message requeue true)
+   Exchange     : cmd.topic
+   Routing Key  : email.send.high
+   type         : ORDEN_CREADA    <- tipo de notificación
+   delivery_mode: 2 (2 = persistente)
+   correlation  : ORD-0035
+   headers      : {'destinatario': 'SUCURSAL', 'estado': 'CREADO', 'traceId': '3c176cf2-77fb-4e91-9f7f-c6d8b6a4f5cf', ...}
+   Payload.type : ORDEN_CREADA
+
+== Queues -> q.cmd.kitchen -> Get messages (Ack mode: Nack message requeue true)
+   Exchange     : cmd.topic
+   Routing Key  : kitchen.ticket.thermal
+   type         : ORDEN_CREADA    <- tipo de notificación
+   headers      : {'destinatario': 'TALLER', 'estado': 'CREADO', ...}
+```
+
+`demo-notificaciones.sh` ahora imprime lo mismo para los mensajes que esperan con el servicio caído:
+
+```
+esperando en q.cmd.email   -> TIPO (type): ORDEN_CREADA | clave: email.send     | destinatario: SUCURSAL | estado de la orden: CREADO          | orden: ORD-0031
+esperando en q.cmd.kitchen -> TIPO (type): ORDEN_CREADA | clave: kitchen.ticket | destinatario: TALLER   | estado de la orden: CREADO          | orden: ORD-0031
+OK   el mensaje que espera en q.cmd.email es de tipo ORDEN_CREADA, dirigido a la SUCURSAL (el aviso al Operador)
+esperando en q.cmd.email   -> TIPO (type): ORDEN_ESTADO | clave: email.send     | destinatario: CLIENTE  | estado de la orden: EN_PREPARACION | orden: ORD-0030
+OK   el mensaje que espera es de tipo ORDEN_ESTADO, dirigido al CLIENTE (cambio de estado de su pedido)
+```
+
+Tipos de notificación: `ORDEN_CREADA` (pedido nuevo: aviso a la sucursal y ticket de taller), `ORDEN_LISTA` (pedido despachado: aviso al cliente y boleta) y
+`ORDEN_ESTADO` (aceptado, en preparación, entregado o cancelado: aviso al cliente). `verificar.sh`, `verificar-flujo.sh` y la demo: "Todo OK" después del cambio.

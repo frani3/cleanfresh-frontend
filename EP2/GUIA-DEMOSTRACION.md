@@ -347,13 +347,17 @@ Operador → Cliente, y Operador → Cliente con el servicio caído. En cada pau
 | 1. Quién consume | **Connections**: `ms-cleanfresh-notificaciones` y `ms-cleanfresh-orders`. **Queues → `q.cmd.email` → Consumers**: `ms-cleanfresh-notificaciones.q.cmd.email`, con *Ack required* | — |
 | 2. Cliente → Operador | **Queues**: *Message rates* con *Deliver* y *Consumer ack* | Tarjeta Notificaciones del Operador: "Nuevo pedido ORD-00XX" |
 | 3. Se cae el servicio | **Consumers = 0** en las 3 colas; en **Connections** solo queda `ms-cleanfresh-orders` | — |
-| 4. Pedido con el servicio caído | **Ready = 1** en `q.cmd.email` y `q.cmd.kitchen` (mensajes persistentes); **Get messages** (*Nack message requeue true*) muestra el JSON | El Cliente ve su pedido aceptado; el Operador aún no ve el aviso |
+| 4. Pedido con el servicio caído | **Ready = 1** en `q.cmd.email` y `q.cmd.kitchen` (mensajes persistentes); **Get messages** (*Nack message requeue true*) → **Properties**: `type = ORDEN_CREADA` (el **tipo de notificación**), headers `destinatario = SUCURSAL` (en `q.cmd.kitchen`, `TALLER`) y `estado = CREADO`; el cuerpo es el JSON | El Cliente ve su pedido aceptado; el Operador aún no ve el aviso |
 | 5. Vuelve el servicio | **Consumers = 1** otra vez y **Ready = 0** | El Operador recibe el aviso que había quedado guardado |
 | 6. Operador → Cliente | *Consumer ack* sube | El Cliente recibe "fue aceptado" y su lista se actualiza sola |
-| 7. Operador → Cliente con el servicio caído | **Ready = 1** en `q.cmd.email` mientras el servicio está caído | El Cliente recibe "está en preparación" al volver el servicio |
+| 7. Operador → Cliente con el servicio caído | **Ready = 1** en `q.cmd.email`; Get messages → `type = ORDEN_ESTADO`, `destinatario = CLIENTE`, `estado = EN_PREPARACION` | El Cliente recibe "está en preparación" al volver el servicio |
 
 **A mano** (si se prefiere hacerlo desde la app): el mismo recorrido con una sesión de Cliente y otra de Operador, y
 `sudo docker compose stop notificaciones` / `sudo docker compose start notificaciones` en la EC2 de microservicios.
+
+**Tipos de notificación que se ven en la consola** (propiedad `type` del mensaje, Spec 039): `ORDEN_CREADA` (pedido nuevo, para la sucursal; el mismo tipo lleva el
+ticket de taller, con `destinatario = TALLER`), `ORDEN_LISTA` (pedido despachado, para el cliente; también la boleta) y `ORDEN_ESTADO` (aceptado, en preparación,
+entregado o cancelado, para el cliente). La clave de ruteo (`email.send`, `kitchen.ticket`, `invoice.gen`, o su variante exprés) dice por qué cola entra.
 
 La demostración anterior (`demo-desacople.sh`, 5.8) cubre solo el sentido Cliente → Operador.
 

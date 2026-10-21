@@ -1,7 +1,7 @@
 ---
 id: 039
 type: spec
-status: approved
+status: verified
 ---
 
 # Spec 039 — El tipo de notificación visible en la consola de RabbitMQ
@@ -43,4 +43,16 @@ enseña el panel) y comprueba que el aviso al Operador es `ORDEN_CREADA/SUCURSAL
 
 ## Verificación
 
-⏳ Pendiente.
+Salidas en [`EVIDENCIA-EP2.md`](../EVIDENCIA-EP2.md), sección 15.
+
+| # | AC | Estado |
+|---|---|---|
+| 1 | `type` igual al del JSON y cabeceras `destinatario` y `estado` | ✅ Cumple: 5 pruebas nuevas de `orders` (48 en total), incluida la variante exprés |
+| 2 | `destinatario`: SUCURSAL / CLIENTE / TALLER según el comando | ✅ Cumple (prueba de la regla y mensajes reales en AWS) |
+| 3 | La consola muestra esas propiedades en Get messages | ✅ Cumple en AWS (API del panel): `type: ORDEN_CREADA`, `destinatario: SUCURSAL` en `q.cmd.email`; `destinatario: TALLER` en `q.cmd.kitchen` |
+| 4 | Los servicios siguen igual | ✅ Cumple: `verificar.sh`, `verificar-flujo.sh` y `demo-notificaciones.sh` "Todo OK" |
+| 5 | Pruebas y guion | ✅ Cumple (guía, sección 5.9) |
+
+**Detalle.** En Get messages también aparecen cabeceras `spring_returned_message_correlation` y `spring_listener_return_correlation`: las agrega
+Spring AMQP para seguir los mensajes devueltos por el broker (*publisher returns*) y no son del proyecto. `type` es una propiedad AMQP estándar,
+distinta del campo `type` del JSON, pero con el mismo valor.
