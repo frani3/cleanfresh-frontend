@@ -1,7 +1,7 @@
 ---
 id: 037
 type: spec
-status: approved
+status: verified
 ---
 
 # Spec 037 — Topología de RabbitMQ como la guía del profesor (políticas de DLX y bindings del topic)
@@ -84,4 +84,30 @@ colas, se vuelve a ejecutar `mq-init` y se reinicia `notificaciones` para que vu
 
 ## Verificación
 
-⏳ Pendiente.
+Salidas en [`EVIDENCIA-EP2.md`](../EVIDENCIA-EP2.md), sección 13.
+
+| # | AC | Estado |
+|---|---|---|
+| 1 | Colas sin `x-dead-letter-*` y 9 bindings | ✅ Cumple (local y AWS) |
+| 2 | Políticas `policy.email/kitchen/invoice.dlx` con patrón, DLX y clave; cada cola las muestra | ✅ Cumple (local y AWS): `verificar-mq.sh` comprueba la política de cada cola, su DLX efectivo y que no quede el DLX como argumento |
+| 3 | Rechazo sin reencolar llega a su DLQ (`rejected`) | ✅ Cumple (local y AWS) |
+| 4 | Las 6 colas replicadas, también las gobernadas por la política de DLX | ✅ Cumple: `mq-init` creó "6 de 6 espejos" en el primer arranque local y en la migración de AWS; las 3 políticas de DLX llevan `ha-mode` |
+| 5 | Enrutamiento del direct y del topic, incluidas las variantes | ✅ Cumple (local y AWS): `email.send.high`, `kitchen.ticket.thermal` e `invoice.gen.pdf` llegan solo a su cola |
+| 6 | El administrador crea/elimina colas con su política y declara la base de forma idempotente | ✅ Cumple (local y AWS): `verificar-admin.sh` "Todo OK" en las dos; 53 pruebas automáticas |
+| 7 | Los servicios siguen funcionando | ✅ Cumple en AWS: `verificar.sh` y `verificar-flujo.sh` "Todo OK" (orden normal y exprés, idempotencia, mensaje venenoso a la DLQ) |
+| 8 | Pruebas, verificaciones y documentación | ✅ Cumple |
+
+**Migración en AWS.** Las 6 colas (vacías) se eliminaron y `mq-init` las recreó sin argumentos con los 9 bindings y las 4 políticas
+(`espejos creados: 6 de 6 colas`). Los consumidores (`notificaciones`) se reengancharon solos y luego se reemplazaron por las imágenes nuevas.
+
+**Hallazgos de la verificación**
+
+- **Crear una cola que ya existe pisaba su política.** Con el DLX como argumento, RabbitMQ rechazaba redeclarar una cola
+  existente con otros argumentos (400). Con el DLX en una política y la cola sin argumentos, `POST /api/mq/queues/q.cmd.email` habría
+  sobrescrito `policy.email.dlx` con otra routing key. Ahora el administrador responde `409` y no toca nada.
+- **Solo rige una política por cola.** `ha-all` (prioridad 0) y las de DLX se pisarían; las de DLX llevan prioridad 1 y también `ha-mode`.
+- **Las verificaciones de enrutamiento suponen que no hay consumidores.** Con `notificaciones` corriendo, el servicio consumió los
+  mensajes de prueba de `verificar-mq.sh` y parecía que no llegaban a ninguna cola (`routed: true` pero "cayó en ninguna"); se
+  repitió con el servicio detenido. Dejó 3 filas de prueba (`{"prueba":...}`) en el registro de mensajes muertos.
+
+**Límites.** `invoice.#` en vez del `invoice.*` de la guía (adaptación explicada arriba). La guía también usa RabbitMQ 3.13.

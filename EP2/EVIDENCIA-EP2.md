@@ -559,3 +559,73 @@ La columna la agregó `ddl-auto: update` sin migración y sin tocar las filas ex
 | Admin | Tabla de órdenes | Sin cambios: ordenada por número (0015, 0014, 0013, 0012...), sin la línea de fecha |
 
 El orden por fecha y hora, y no por número, se ve en que `ORD-0012` (hecha después) queda arriba de `ORD-0013`.
+
+## 13. Topología como la guía del profesor (Spec 037)
+
+Detalle en [`specs/037-spec-topologia-como-la-guia.md`](specs/037-spec-topologia-como-la-guia.md). Las colas dejan de llevar el DLX como argumento y
+pasan a tres políticas, con 9 bindings (`email.#`, `kitchen.#`, `invoice.#` en `cmd.topic`).
+
+**Antes (AWS, antes de migrar):** `q.cmd.email` con `args: {'x-dead-letter-exchange': 'cmd.dead.dlx', 'x-dead-letter-routing-key': 'email.send'}` y
+`política: ha-all`.
+
+**Migración (EC2 `cleanfresh-mq`):** las 6 colas estaban vacías y se eliminaron (`HTTP 204` las 6); `mq-init` las recreó:
+
+```
+definiciones cargadas: HTTP 204
+política ha-all: HTTP 204
+política policy.email.dlx: HTTP 201
+política policy.invoice.dlx: HTTP 201
+política policy.kitchen.dlx: HTTP 201
+espejos creados: 6 de 6 colas
+```
+
+**`verificar-mq.sh` en AWS** (con `notificaciones` detenido, para que no consuma los mensajes de prueba): "Todo OK", incluyendo
+
+```
+OK   q.cmd.email tiene la política policy.email.dlx
+OK   q.cmd.email -> DLX cmd.dead.dlx con la clave email.send (efectivo)
+OK   bindings declarados: 9 (los 9 de la guía: direct, topic email.# / kitchen.# / invoice.# y los de cmd.dead.dlx)
+OK   policy.email.dlx también lleva la replicación (ha-mode all)        (y kitchen, invoice)
+OK   cada una de las 6 colas tiene espejo sincronizado en rabbit@rabbit2
+OK   cmd.topic + 'email.send.high' / 'kitchen.ticket.thermal' / 'invoice.gen.pdf' -> solo su cola
+OK   q.cmd.email / kitchen / invoice -> su .dlq (motivo en x-death: rejected); la cola principal quedó vacía
+```
+
+**Administrador** (`verificar-admin.sh`, en AWS y en local): "Todo OK": crea `q.demo.pagos` con su DLQ y su política `policy.q.demo.pagos.dlx`
+(DLX efectivo `cmd.dead.dlx`, sin argumentos en la cola), la elimina junto con la política, crear `q.cmd.email` otra vez responde `409` y no pisa su
+política, y `POST /api/mq/topologia/base` repone los bindings y las tres políticas de la guía.
+
+**Servicios sobre la topología nueva:** `verificar.sh` "Todo OK" y `verificar-flujo.sh` "Todo OK" (orden normal y exprés, idempotencia, mensaje venenoso a la DLQ y
+registro), con `orders`, `notificaciones` y `mq-admin` reconstruidos.
+
+## 14. Demostración de las notificaciones (Spec 038)
+
+Detalle en [`specs/038-spec-demostracion-notificaciones.md`](specs/038-spec-demostracion-notificaciones.md). `demo-notificaciones.sh` en la EC2 de microservicios:
+
+```
+[1] Quién consume: ms-cleanfresh-notificaciones responde a RabbitMQ
+       consumidor ms-cleanfresh-notificaciones.q.cmd.email       cola q.cmd.email    | ACK manual: True
+       consumidor ms-cleanfresh-notificaciones.q.cmd.invoice     cola q.cmd.invoice  | ACK manual: True
+       consumidor ms-cleanfresh-notificaciones.q.cmd.kitchen     cola q.cmd.kitchen  | ACK manual: True
+       conexión   ms-cleanfresh-notificaciones   desde 172.31.39.91
+       conexión   ms-cleanfresh-orders           desde 172.31.39.91
+[2] Cliente -> Operador
+  OK   el cliente Demo-Prof-183919 solicitó un servicio: ORD-0027 creada
+  OK   el Operador de Providencia recibió: Nuevo pedido ORD-0027: Planchado de Demo-Prof-183919@cleanfresh.com en Providencia (total $9.500)
+[3] Se cae el servicio de notificaciones
+  OK   RabbitMQ ya no ve a ms-cleanfresh-notificaciones: q.cmd.email sin consumidores
+[4] Cliente -> Operador con el servicio caído
+  OK   ... la orden ORD-0028 se aceptó (el sistema no depende de notificaciones)
+       RabbitMQ -> q.cmd.email: 1 mensaje(s) (1 persistentes), 0 consumidor(es); q.cmd.kitchen: 1 mensaje(s) (1 persistentes), 0 consumidor(es)
+[5] Vuelve el servicio
+  OK   el Operador de Providencia recibió el aviso que había quedado guardado: Nuevo pedido ORD-0028: Lavado en seco de ... en Providencia
+  OK   las colas se vaciaron: el servicio consumió lo que esperaba
+[6] Operador -> Cliente
+  OK   el cliente recibió: Tu pedido ORD-0027 (Planchado) fue aceptado
+[7] Operador -> Cliente con el servicio caído
+  OK   el Operador pasó ORD-0027 a EN_PREPARACION con el servicio caído (el cambio se guarda igual)
+       RabbitMQ -> q.cmd.email: 1 mensaje(s) (1 persistentes), 0 consumidor(es)
+  OK   el cliente recibió, al volver el servicio: Tu pedido ORD-0027 (Planchado) está en preparación
+  OK   el cliente tiene exactamente 2 avisos de ORD-0027 (aceptado y en preparación), sin duplicados
+Demostración completa: las notificaciones llegan en los dos sentidos y, aunque el servicio se caiga, RabbitMQ las conserva y se entregan al volver.
+```

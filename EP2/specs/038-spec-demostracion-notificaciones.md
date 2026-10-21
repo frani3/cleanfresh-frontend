@@ -1,7 +1,7 @@
 ---
 id: 038
 type: spec
-status: approved
+status: verified
 ---
 
 # Spec 038 — Demostración de las notificaciones con RabbitMQ: servicio visible por su nombre y script de la demo
@@ -60,4 +60,16 @@ Reemplaza en la demo a `demo-desacople.sh` (que se conserva: cubre solo el senti
 
 ## Verificación
 
-⏳ Pendiente.
+Salidas en [`EVIDENCIA-EP2.md`](../EVIDENCIA-EP2.md), sección 14.
+
+| # | AC | Estado |
+|---|---|---|
+| 1 | Conexiones `ms-cleanfresh-notificaciones` y `ms-cleanfresh-orders` en **Connections** | ✅ Cumple (local y AWS) |
+| 2 | Consumidores `ms-cleanfresh-notificaciones.<cola>` con ACK manual | ✅ Cumple (local y AWS) |
+| 3 | Servicio caído: 0 consumidores y mensajes persistentes esperando; al volver, las colas quedan en 0 | ✅ Cumple en AWS (`q.cmd.email: 1 mensaje(s) (1 persistentes), 0 consumidor(es)`) |
+| 4 | El Operador recibe el aviso del pedido hecho con el servicio caído; el Cliente el del cambio de estado hecho con el servicio caído; sin duplicados | ✅ Cumple en AWS |
+| 5 | `demo-notificaciones.sh` termina en "Demostración completa" en AWS y su guion está en la guía | ✅ Cumple (guía, sección 5.9) |
+| 6 | Pruebas automáticas y AWS | ✅ Cumple: `orders` 43 pruebas, `notificaciones` 56 |
+
+**Hallazgo.** Spring Boot aplica los nombres sin configuración extra: basta declarar un `ConnectionNameStrategy` y un
+`ContainerCustomizer` como beans. La conexión de `orders` aparece cuando publica su primer mensaje (la conexión es perezosa).

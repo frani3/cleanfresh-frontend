@@ -327,6 +327,36 @@ Con la consola: **Instance state → Reboot instance** en cada EC2. Tras ~2 minu
 `docker ps` debe mostrar los contenedores `Up` sin intervención. No usar
 Stop/Start si no hace falta: cambia la IP pública.
 
+### 5.9 Demostración para el profesor: notificaciones en los dos sentidos y con el servicio caído (Spec 038)
+
+El profesor pidió ver tres cosas: **recibir notificaciones**, que **Cliente → Operador y Operador → Cliente sigan funcionando aunque el servicio se
+caiga** (el mensaje persiste y llega cuando el servicio vuelve), y **mostrar en la consola de RabbitMQ que `ms-cleanfresh-notificaciones` responde**.
+
+**Automática, con pausas para enseñar la consola** (en la EC2 de microservicios, desde una terminal `ssh -t`):
+
+```bash
+cd ~/cleanfresh/cleanfresh-frontend/EP2/despliegue
+./demo-notificaciones.sh --pausas     # sin --pausas corre de corrido
+```
+
+Narra siete pasos y los comprueba: quién consume, Cliente → Operador, se cae el servicio, Cliente → Operador con el servicio caído, vuelve el servicio,
+Operador → Cliente, y Operador → Cliente con el servicio caído. En cada pausa, esto es lo que se mira:
+
+| Paso | En la consola de RabbitMQ | En la app |
+|---|---|---|
+| 1. Quién consume | **Connections**: `ms-cleanfresh-notificaciones` y `ms-cleanfresh-orders`. **Queues → `q.cmd.email` → Consumers**: `ms-cleanfresh-notificaciones.q.cmd.email`, con *Ack required* | — |
+| 2. Cliente → Operador | **Queues**: *Message rates* con *Deliver* y *Consumer ack* | Tarjeta Notificaciones del Operador: "Nuevo pedido ORD-00XX" |
+| 3. Se cae el servicio | **Consumers = 0** en las 3 colas; en **Connections** solo queda `ms-cleanfresh-orders` | — |
+| 4. Pedido con el servicio caído | **Ready = 1** en `q.cmd.email` y `q.cmd.kitchen` (mensajes persistentes); **Get messages** (*Nack message requeue true*) muestra el JSON | El Cliente ve su pedido aceptado; el Operador aún no ve el aviso |
+| 5. Vuelve el servicio | **Consumers = 1** otra vez y **Ready = 0** | El Operador recibe el aviso que había quedado guardado |
+| 6. Operador → Cliente | *Consumer ack* sube | El Cliente recibe "fue aceptado" y su lista se actualiza sola |
+| 7. Operador → Cliente con el servicio caído | **Ready = 1** en `q.cmd.email` mientras el servicio está caído | El Cliente recibe "está en preparación" al volver el servicio |
+
+**A mano** (si se prefiere hacerlo desde la app): el mismo recorrido con una sesión de Cliente y otra de Operador, y
+`sudo docker compose stop notificaciones` / `sudo docker compose start notificaciones` en la EC2 de microservicios.
+
+La demostración anterior (`demo-desacople.sh`, 5.8) cubre solo el sentido Cliente → Operador.
+
 ### 5.8 Desacople: la solicitud sobrevive a la caída de notificaciones
 
 Es el caso que hay que mostrar: el cliente solicita un servicio, los comandos llegan a RabbitMQ,
