@@ -525,3 +525,34 @@ colas q.cmd.email / kitchen / invoice y sus tres .dlq: 0 mensajes
 | Operador | Llega un pedido nuevo (aviso) | ORD-0014 aparece en su lista a los 7 s, sin pulsar "Actualizar"; la búsqueda escrita y la ventana de orden abierta siguen |
 | Operador | Sin avisos nuevos | 0 consultas de órdenes en 31 s |
 | Admin | Llega un aviso | 0 consultas de órdenes en 33 s; ve el aviso en su pestaña con la etiqueta "Estado del pedido" |
+
+## 12. Fecha y hora de cada pedido y el más reciente arriba (Spec 036)
+
+Detalle en [`specs/036-spec-fecha-hora-y-orden-de-pedidos.md`](specs/036-spec-fecha-hora-y-orden-de-pedidos.md). Capturas en
+[`capturas/036/`](capturas/036/).
+
+### 12.1 La hora se guarda y se devuelve (EC2 #2, servicio real y RDS)
+
+```
+POST /api/orders -> {"numeroOrden":"ORD-0021","fecha":"2026-10-21",...,"fechaHora":"2026-10-21T04:54:49.838608Z"}
+hora del servidor (UTC): 2026-10-21T04:54:50Z
+GET /api/orders:  ORD-0001 | fecha 2026-09-10 | fechaHora None    ...    ORD-0021 | fecha 2026-10-21 | fechaHora 2026-10-21T04:54:49.838608Z
+   con hora: 1 | sin hora (anteriores): 20
+columna en la RDS (orders_db.ordenes): fecha_hora timestamp with time zone
+ORD-0021 fecha_hora=2026-10-21 04:54:49.838608+00   ·   ORD-0020 fecha_hora=NULL
+```
+
+La columna la agregó `ddl-auto: update` sin migración y sin tocar las filas existentes.
+
+### 12.2 Lo que se ve (Chrome, API simulada)
+
+| Rol | Comprobación | Resultado |
+|---|---|---|
+| Cliente | "Tus pedidos" | 0015, 0012, 0013 y 0007: el más reciente arriba; `21-10-2026 01:42`, `21-10-2026 01:22`, `20-10-2026 22:52`; la anterior sin hora: `08-10-2026` |
+| Cliente | Solicita un servicio | El pedido nuevo (0016) queda primero, con la hora de ese momento |
+| Operador | "Más nuevas primero" (todos los estados) | 0015, 0012, 0014, 0013 por fecha y hora; abajo las anteriores por número (0007, 0002) |
+| Operador | "Más antiguas primero" | Invierte el orden |
+| Operador | Búsqueda "0013" y filtro "Entregado" | Siguen funcionando, con la hora en cada pedido |
+| Admin | Tabla de órdenes | Sin cambios: ordenada por número (0015, 0014, 0013, 0012...), sin la línea de fecha |
+
+El orden por fecha y hora, y no por número, se ve en que `ORD-0012` (hecha después) queda arriba de `ORD-0013`.

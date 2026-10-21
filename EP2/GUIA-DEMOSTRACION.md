@@ -292,6 +292,8 @@ en el contador de la campanita del encabezado.
 3. **Operador:** abre la orden con **Ver → Ajustar estado** y la lleva por los estados (Aceptado, En preparación,
    Despachado, Entregado; también puede saltar estados o cancelar) con **Confirmar cambio**. Cada cambio se guarda en el
    backend.
+   En la lista **Gestión de órdenes** (Operador) y en **Tus pedidos** (Cliente) cada pedido muestra su **fecha y hora**
+   (`21-10-2026 01:26`) y el más reciente va arriba. Los pedidos anteriores a la Spec 036 solo tienen fecha.
 4. **Cliente:** **sin recargar la página** (se actualiza sola cada 15 s y al llegar cada aviso) ve en **Tus pedidos**
    el estado nuevo y en su tarjeta un aviso por cada cambio: **"Tu pedido ORD-00XX (...) fue aceptado"**, **"está en
    preparación"**, **"está listo"** (al despachar, con la boleta), **"fue entregado"** o **"fue cancelado"**. Al pulsar

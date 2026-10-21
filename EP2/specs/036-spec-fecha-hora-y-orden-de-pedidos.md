@@ -1,7 +1,7 @@
 ---
 id: 036
 type: spec
-status: draft
+status: verified
 ---
 
 # Spec 036 — Fecha y hora de cada pedido, y el más reciente arriba
@@ -75,4 +75,30 @@ Un pedido que el Cliente acaba de crear aparece arriba, con su hora, en cuanto s
 
 ## Verificación
 
-⏳ Pendiente de aprobación.
+Fases: A backend (`orders`, BFF), B frontend, C verificación en el navegador, D despliegue en AWS. Capturas en
+`EP2/capturas/036/`; salidas completas en [`EVIDENCIA-EP2.md`](../EVIDENCIA-EP2.md), sección 12.
+
+**Backend.** `orders`: 42 pruebas (4 nuevas: guarda el instante de creación, una orden anterior devuelve `fechaHora`
+nula, las sembradas no tienen hora, dos órdenes seguidas guardan instantes no decrecientes); BFF: 67 (1 nueva: el
+campo pasa tal cual y una orden sin él lo trae nulo). La verificación encontró un detalle real: `Instant.now()` trae
+nanosegundos y la base guarda microsegundos, así que la respuesta al crear no coincidía con la lectura posterior; se
+trunca a microsegundos al guardar.
+
+**Frontend.** Build sin errores ni advertencias; 23 pruebas de la lógica pura (12 nuevas: orden, comparador y formato,
+incluida la zona horaria y el cambio de día). Verificación en Chrome con API simulada, un script por rol:
+
+| # | AC | Estado |
+|---|---|---|
+| 1 | Una orden nueva guarda y devuelve su fecha y hora; las anteriores no | ✅ Cumple (pruebas, y AWS: `ORD-0021` con `2026-10-21T04:54:49.838608Z`; 20 órdenes anteriores sin hora) |
+| 2 | Fecha y hora en "Gestión de órdenes" y "Tus pedidos"; solo la fecha en las anteriores | ✅ Cumple: `21-10-2026 01:42` en las nuevas y `08-10-2026` en las anteriores, sin inventar hora |
+| 3 | "Tus pedidos" con el más reciente arriba; el pedido nuevo aparece arriba | ✅ Cumple: orden 0015, 0012, 0013 y la anterior 0007; el recién creado (0016) quedó primero con la hora de ese momento |
+| 4 | "Más nuevas primero" por fecha y hora; "Más antiguas primero" invierte | ✅ Cumple: 0015, 0012, 0014, 0013 y las anteriores abajo por número (0007, 0002); 0012 (número menor, hecha después que 0013) va arriba de 0013 |
+| 5 | Órdenes con y sin hora conviven en el orden correcto | ✅ Cumple (prueba del comparador y la lista del Operador) |
+| 6 | Filtros, búsqueda y Admin siguen igual | ✅ Cumple: búsqueda "0013" y filtro "Entregado" funcionan; el Admin sigue ordenado por número (0015, 0014, 0013, 0012...) y sin línea de fecha |
+| 7 | Pruebas, build, navegador y AWS | ✅ Cumple |
+
+**AWS.** `orders` y BFF reconstruidos. `ddl-auto: update` agregó la columna `fecha_hora` (`timestamp with time zone`) a
+`ordenes` en la RDS sin tocar datos ni hacer migración. BFF sin token: `401` (directo y por API Gateway).
+
+**Límites.** Las 20 órdenes que ya existían (incluida `ORD-0013`) **no tienen hora** y se ven solo con la fecha; las
+nuevas, con hora. La hora se muestra en la zona del navegador. Falta verlo en la app real con los usuarios.
