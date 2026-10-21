@@ -56,6 +56,7 @@ describe("kindLabel", () => {
   test("traduce los tipos conocidos y deja pasar los demás", () => {
     expect(kindLabel("ORDEN_CREADA")).toBe("Pedido nuevo");
     expect(kindLabel("ORDEN_LISTA")).toBe("Pedido listo");
+    expect(kindLabel("ORDEN_ESTADO")).toBe("Estado del pedido");
     expect(kindLabel("OTRO")).toBe("OTRO");
   });
 });

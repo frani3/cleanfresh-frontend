@@ -4,6 +4,8 @@
 export const KIND_LABELS = {
   ORDEN_CREADA: "Pedido nuevo",
   ORDEN_LISTA: "Pedido listo",
+  // Spec 035: cambio de estado (aceptado, en preparación, entregado, cancelado); el mensaje dice cuál.
+  ORDEN_ESTADO: "Estado del pedido",
 };
 
 export function kindLabel(tipo) {

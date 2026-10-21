@@ -2002,6 +2002,10 @@ input {
   color: #047857;
 }
 
+.notif-kind-ORDEN_ESTADO {
+  color: var(--color-accent);
+}
+
 .notif-order {
   padding: 0.05rem 0.45rem;
   border-radius: 999px;

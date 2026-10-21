@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "react-oidc-context";
 import {
   Activity,
@@ -33,7 +33,7 @@ import {
 import { getHealth, getCatalog, getOrders, createOrder, updateOrderStatus } from "../services/apiService";
 import NotificationBell from "../components/NotificationBell";
 import NotificationsPanel from "../components/NotificationsPanel";
-import useNotifications from "../hooks/useNotifications";
+import useNotifications, { POLL_MS } from "../hooks/useNotifications";
 import OrderFilters, { OrderListFooter } from "../components/OrderFilters";
 import useOrderFilters from "../hooks/useOrderFilters";
 
@@ -1788,6 +1788,41 @@ function BentoDashboard() {
     readOnly: isAdmin,
     enabled: rolesLoaded && !!account && dataLoaded,
   });
+
+  // Spec 035: las órdenes se actualizan solas. Es una consulta "silenciosa": si falla deja lo que ya había
+  // (no reemplaza la pantalla por un error) y no toca filtros ni ventanas abiertas. No se usa en el Admin:
+  // sus órdenes creadas a mano en pantalla no existen en el backend y una recarga las borraría.
+  const refreshOrdersQuietly = useCallback(
+    () =>
+      getOrders(roleVariant === "operador" ? operadorSucursal : undefined)
+        .then(setOrders)
+        .catch(() => {}),
+    [roleVariant, operadorSucursal]
+  );
+
+  // Cliente: "Tus pedidos" se vuelve a consultar con la misma cadencia que los avisos.
+  useEffect(() => {
+    if (roleVariant !== "cliente" || !ordersLoaded) return undefined;
+    const timer = setInterval(refreshOrdersQuietly, POLL_MS);
+    return () => clearInterval(timer);
+  }, [roleVariant, ordersLoaded, refreshOrdersQuietly]);
+
+  // Cliente y Operador: al llegar un aviso nuevo se refrescan las órdenes al instante (el estado nuevo del
+  // Cliente, el pedido nuevo del Operador). Los id de los avisos solo crecen, así que "mayor que el último
+  // visto" significa "llegó uno nuevo"; la primera carga solo fija el punto de partida.
+  const newestAviso = notifications.items.reduce((max, n) => Math.max(max, n.id), 0);
+  const lastSeenAviso = useRef(null);
+  useEffect(() => {
+    if (!notifications.loaded) return;
+    if (lastSeenAviso.current === null) {
+      lastSeenAviso.current = newestAviso;
+      return;
+    }
+    if (newestAviso > lastSeenAviso.current) {
+      lastSeenAviso.current = newestAviso;
+      if (roleVariant !== "admin") refreshOrdersQuietly();
+    }
+  }, [notifications.loaded, newestAviso, roleVariant, refreshOrdersQuietly]);
 
   // La campanita lleva al módulo: abre la pestaña (Admin) y baja hasta él.
   const goToNotifications = () => {
