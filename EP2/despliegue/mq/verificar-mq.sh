@@ -95,10 +95,19 @@ for par in "email.send:q.cmd.email:q.cmd.email.dlq" "kitchen.ticket:q.cmd.kitche
   clave=${par%%:*}; resto=${par#*:}; cola=${resto%%:*}; dlq=${resto##*:}
   vaciar
   publicar cmd.direct "$clave" >/dev/null
-  # NACK sin reencolar: es lo que hace un consumidor cuando agota los reintentos
-  api -X POST "$MQ_API/queues/%2F/$cola/get" -H 'content-type: application/json' -d '{"count":1,"ackmode":"reject_requeue_false","encoding":"auto"}' >/dev/null
-  sleep 1
-  en_dlq=$(api -X POST "$MQ_API/queues/%2F/$dlq/get" -H 'content-type: application/json' -d '{"count":5,"ackmode":"ack_requeue_true","encoding":"auto"}')
+  # NACK sin reencolar: es lo que hace un consumidor cuando agota los reintentos. La API HTTP del panel
+  # a veces cierra el canal antes de que se procese el rechazo y el mensaje vuelve a la cola (marcado
+  # redelivered): en ese caso no hubo rechazo y se repite, hasta 5 veces.
+  en_dlq=""
+  for _ in 1 2 3 4 5; do
+    api -X POST "$MQ_API/queues/%2F/$cola/get" -H 'content-type: application/json' -d '{"count":1,"ackmode":"reject_requeue_false","encoding":"auto"}' >/dev/null
+    for _ in $(seq 1 6); do
+      sleep 1
+      en_dlq=$(api -X POST "$MQ_API/queues/%2F/$dlq/get" -H 'content-type: application/json' -d '{"count":5,"ackmode":"ack_requeue_true","encoding":"auto"}')
+      echo "$en_dlq" | grep -q '"routing_key"' && break
+    done
+    echo "$en_dlq" | grep -q '"routing_key"' && break
+  done
   if echo "$en_dlq" | grep -q '"routing_key"' && [ "$(contar $cola)" = "0" ]; then
     motivo=$(echo "$en_dlq" | grep -o '"reason":"[a-z]*"' | head -1 | cut -d'"' -f4)
     ok "$cola -> $dlq (motivo en x-death: ${motivo:-?}); la cola principal quedó vacía"

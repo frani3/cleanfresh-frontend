@@ -77,16 +77,33 @@ services:
         API=http://rabbit1:15672/api
         AUTH="$$RABBITMQ_USER:$$RABBITMQ_PASSWORD"
         echo "esperando a que los dos nodos estén unidos en el clúster..."
-        for i in $$(seq 1 90); do
+        # En el primer arranque rabbit2 se une al clúster, se detiene y vuelve a arrancar: puede verse
+        # "activo" un momento antes de reiniciarse. Se exige verlo activo 4 veces seguidas (12 s).
+        estables=0
+        for i in $$(seq 1 120); do
           n=$$(curl -s -u "$$AUTH" $$API/nodes | grep -o '"running":true' | wc -l)
-          [ "$$n" -ge 2 ] && break
-          sleep 4
+          if [ "$$n" -ge 2 ]; then estables=$$((estables+1)); else estables=0; fi
+          [ "$$estables" -ge 4 ] && break
+          sleep 3
         done
         echo "nodos activos: $$n"
         curl -sS -u "$$AUTH" -H "content-type: application/json" -X POST --data-binary @/definitions.json -w "definiciones cargadas: HTTP %{http_code}\n" $$API/definitions
         # La política de alta disponibilidad se aplica DESPUÉS de que existen las colas: si viene
         # dentro de las definiciones, RabbitMQ no crea los espejos en el otro nodo.
         curl -sS -u "$$AUTH" -H "content-type: application/json" -X PUT --data-binary @/politica-ha.json -w "política ha-all (espejos en los dos nodos): HTTP %{http_code}\n" $$API/policies/%2F/ha-all
+        # Se comprueba que de verdad existan los 6 espejos; si no (un nodo se reinició justo entonces),
+        # se quita y se vuelve a poner la política, que es lo que los crea.
+        for i in $$(seq 1 12); do
+          sleep 5
+          espejos=$$(curl -s -u "$$AUTH" $$API/queues/%2F | grep -o '"slave_nodes":\["rabbit@' | wc -l)
+          [ "$$espejos" -ge 6 ] && { echo "espejos creados: $$espejos de 6 colas"; exit 0; }
+          echo "espejos creados: $$espejos de 6; se vuelve a aplicar la política"
+          curl -sS -o /dev/null -u "$$AUTH" -X DELETE $$API/policies/%2F/ha-all
+          sleep 2
+          curl -sS -o /dev/null -u "$$AUTH" -H "content-type: application/json" -X PUT --data-binary @/politica-ha.json $$API/policies/%2F/ha-all
+        done
+        echo "AVISO: no se pudieron crear los 6 espejos"
+        exit 1
 
 volumes:
   rabbit1-data:
