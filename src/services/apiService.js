@@ -60,6 +60,9 @@ function mapOrder(item, actor) {
     price: item.total,
     status: item.estado,
     createdAt: item.fecha,
+    // Spec 036: instante exacto de creación (ISO-8601, UTC); null en las órdenes anteriores, que solo
+    // tienen la fecha.
+    createdAtTime: item.fechaHora || null,
     // El backend no trackea quién hizo cada cambio de estado; arrancamos
     // el historial con una sola entrada "de origen" (Spec 020) y a partir
     // de acá el frontend va sumando entradas reales por sesión. Para un

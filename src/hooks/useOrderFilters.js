@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { compareNewestFirst, orderNumber } from "../utils/orders";
 
 // Cuántas órdenes se muestran por bloque antes de pedir "Ver más".
 export const ORDER_PAGE_SIZE = 10;
@@ -6,14 +7,6 @@ export const ORDER_PAGE_SIZE = 10;
 // Estados "en curso": lo que el Operador gestiona en su turno. Entregado y
 // Cancelado ya no requieren gestión, pero siguen accesibles con "Todos".
 export const ACTIVE_STATUSES = ["CREADO", "ACEPTADO", "EN_PREPARACION", "DESPACHADO"];
-
-// El N° de orden (ORD-0014) crece con cada orden, así que sirve para ordenar de
-// la más nueva a la más antigua. Las que crea el Admin en pantalla usan
-// ORD-<timestamp>, que también es mayor que las del backend.
-function orderNumber(order) {
-  const digits = String(order.id).replace(/\D/g, "");
-  return digits ? Number(digits) : 0;
-}
 
 function matchesStatus(order, status) {
   if (status === "ALL") return true;
@@ -27,7 +20,7 @@ function matchesStatus(order, status) {
 //
 // initialStatus: "ALL" (todas, incluidas Entregado y Cancelado), "ACTIVE"
 // (en curso) o un estado concreto.
-function useOrderFilters(orders, { initialStatus = "ALL" } = {}) {
+function useOrderFilters(orders, { initialStatus = "ALL", timeAware = false } = {}) {
   const [query, setQueryState] = useState("");
   const [status, setStatusState] = useState(initialStatus);
   const [branch, setBranchState] = useState("ALL");
@@ -64,9 +57,15 @@ function useOrderFilters(orders, { initialStatus = "ALL" } = {}) {
       const matchesBranch = branch === "ALL" || o.branch === branch;
       return matchesText && matchesStatus(o, status) && matchesBranch;
     });
+    // timeAware (Operador, Spec 036): "más nuevas" ordena por fecha y hora de creación. Sin él (Admin) se
+    // sigue ordenando solo por N° de orden.
+    if (timeAware) {
+      const newestFirst = [...result].sort(compareNewestFirst);
+      return sort === "NEW" ? newestFirst : newestFirst.reverse();
+    }
     const direction = sort === "NEW" ? -1 : 1;
     return [...result].sort((a, b) => direction * (orderNumber(a) - orderNumber(b)));
-  }, [orders, query, status, branch, sort]);
+  }, [orders, query, status, branch, sort, timeAware]);
 
   const visibleOrders = filtered.slice(0, limit);
 

@@ -1120,6 +1120,12 @@ input {
   color: var(--color-text);
 }
 
+.op2-order-when {
+  margin: 0.15rem 0 0;
+  font-size: 0.74rem;
+  color: var(--color-text-soft);
+}
+
 .op2-order-meta {
   margin: 0.2rem 0 0;
   font-size: 0.72rem;

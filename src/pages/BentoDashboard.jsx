@@ -36,6 +36,7 @@ import NotificationsPanel from "../components/NotificationsPanel";
 import useNotifications, { POLL_MS } from "../hooks/useNotifications";
 import OrderFilters, { OrderListFooter } from "../components/OrderFilters";
 import useOrderFilters from "../hooks/useOrderFilters";
+import { compareNewestFirst, formatOrderDate } from "../utils/orders";
 
 /* =========================================================
    Datos mock — en producción vendrían de las APIs de
@@ -1282,7 +1283,7 @@ function OperadorView({
   // Spec 031: mismas herramientas de búsqueda que el Admin. Arranca en "Activas"
   // (lo que gestiona en su turno); "Todos los estados" incluye las entregadas
   // y canceladas, para que ninguna orden quede oculta sin que él lo pida.
-  const orderFilters = useOrderFilters(orders, { initialStatus: "ACTIVE" });
+  const orderFilters = useOrderFilters(orders, { initialStatus: "ACTIVE", timeAware: true });
 
   const pending = orders.filter((o) => o.status === "CREADO" || o.status === "ACEPTADO").length;
   const express = orders.filter((o) => o.service === "Servicio exprés").length;
@@ -1350,6 +1351,7 @@ function OperadorView({
                   <p className="op2-order-meta">
                     {o.customer} · {o.service} · {o.branch}
                   </p>
+                  <p className="op2-order-when">{formatOrderDate(o)}</p>
                 </div>
                 <div className="modal-footer-actions">
                   <button className="btn2 btn2-outline" onClick={() => setViewOrder(o)}>
@@ -1445,6 +1447,8 @@ function ClienteView({ services, orders, cognitoUsername, onRequestOrder, notifi
   const myOrders = orders.filter(
     (o) => (o.customerId ?? o.customer).trim().toLowerCase() === normalizedUsername
   );
+  // Spec 036: el pedido más reciente arriba (por fecha y hora de creación).
+  const myOrdersNewestFirst = [...myOrders].sort(compareNewestFirst);
   // Spec 032: sucursal en la que el Cliente quiere su servicio (no se guarda entre sesiones).
   const [branch, setBranch] = useState(BRANCHES[0]);
 
@@ -1484,7 +1488,7 @@ function ClienteView({ services, orders, cognitoUsername, onRequestOrder, notifi
 
       <BentoCard title="Tus pedidos" subtitle="Solo tus órdenes" icon={ListTodo} className="card-cli-orders">
         <ul className="op2-order-list">
-          {myOrders.map((o) => (
+          {myOrdersNewestFirst.map((o) => (
             <li key={o.id} className="op2-order-item">
               <div>
                 <div className="op2-order-id-row">
@@ -1494,6 +1498,7 @@ function ClienteView({ services, orders, cognitoUsername, onRequestOrder, notifi
                 <p className="op2-order-meta">
                   {o.customer} · {o.service} · {o.branch}
                 </p>
+                <p className="op2-order-when">{formatOrderDate(o)}</p>
               </div>
               <button className="btn2 btn2-outline" onClick={() => setViewOrder(o)}>
                 <Eye size={11} /> Ver
