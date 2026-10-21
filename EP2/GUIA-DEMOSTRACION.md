@@ -278,30 +278,34 @@ microservicios); el panel (15672) solo responde desde tu IP.
 En cambio `Test-NetConnection 3.213.118.143 -Port 8080` sí responde: es la única
 entrada pública, detrás de API Gateway.
 
-### 5.7 Avisos al Operador y al Cliente (Spec 030)
+### 5.7 Notificaciones: aviso al Operador y al Cliente, con botón de leído (Specs 030 y 034)
 
-La cola ya no solo se ve en un log: cada mensaje se convierte en un aviso
-guardado y dirigido, que se ve en la campanita de la app.
+Cada mensaje de RabbitMQ se convierte en un aviso guardado y dirigido, que se ve en el **módulo de
+notificaciones** de la app (Admin: pestaña "Notificaciones"; Operador y Cliente: tarjeta de ancho completo) y
+en el contador de la campanita del encabezado.
 
 1. **Cliente:** inicia sesión y solicita un servicio (por ejemplo en Providencia).
-2. **Operador:** inicia sesión, deja "Sucursal en turno" en esa sucursal y abre la
-   campanita: aparece **"Pedido nuevo: ORD-00XX ..."**, resaltado y con contador.
-   Al abrirla queda como leído.
-3. **Operador:** abre la orden con **Ver → Ajustar estado → Despachado → Confirmar
-   cambio**. El cambio ahora se guarda en el backend, no solo en pantalla.
-4. **Cliente:** en unos segundos (la app consulta cada 15 s) su campanita muestra
-   **"Pedido listo: Tu pedido ORD-00XX (...) está listo"**.
-5. **Admin:** su campanita muestra todos los avisos en modo solo lectura (sin
-   contador: no marca nada como leído, para no borrarles los pendientes a los demás).
+2. **Operador:** inicia sesión, deja "Sucursal en turno" en esa sucursal. En su tarjeta **Notificaciones**
+   aparece **"Nuevo pedido ORD-00XX ..."** resaltado, con el contador de la campanita. Verlo **no** lo marca
+   como leído: se usa **Marcar leído** (por aviso) o **Marcar todas leídas**; el filtro **Sin leer** muestra solo
+   los pendientes.
+3. **Operador:** abre la orden con **Ver → Ajustar estado → Despachado → Confirmar cambio** (se guarda en el backend).
+4. **Cliente:** en unos segundos (la app consulta cada 15 s) su tarjeta muestra **"Tu pedido ORD-00XX (...) está
+   listo"**; al pulsar **Marcar leído** el contador de la campanita baja.
+5. **Admin:** en la pestaña **Notificaciones** ve los avisos de todos, con "Para: Sucursal Providencia" o
+   "Para: Cliente <nombre>", en **solo lectura** (sin botones ni contador, para no borrarles los pendientes a
+   los demás). Pulsar la campanita abre esa pestaña.
 
-Cada rol ve solo lo suyo: otro Cliente no ve el aviso de este pedido, y un
-Operador de otra sucursal no ve el del pedido nuevo.
+Cada rol ve solo lo suyo: otro Cliente no ve el aviso de este pedido, y un Operador de otra sucursal no ve el del
+pedido nuevo. Un Cliente tampoco puede marcar un aviso ajeno (el BFF responde `404`).
 
 En la EC2 #2, los mismos avisos por la API de `notificaciones` y por la base:
 
 ```bash
 curl -s "localhost:8083/api/notificaciones?sucursal=Providencia"      # avisos de la sucursal
 curl -s "localhost:8083/api/notificaciones?cliente=<username-del-cliente>"   # avisos de un cliente
+curl -s -X PUT "localhost:8083/api/notificaciones/<id>/leida?sucursal=Providencia" -w "%{http_code}
+"   # marcar uno (204)
 docker compose logs -f notificaciones                                  # "Notificación: ..." en vivo
 ```
 
@@ -369,7 +373,7 @@ Nota: las cifras del panel se refrescan cada pocos segundos.
 | `orders`/`catalog` reinician en bucle | La base no existe o falla la conexión: `docker compose logs orders`. Ver `ARQUITECTURA.md` (GRANT en RDS) |
 | SSH sin respuesta tras reiniciar la EC2 #2 | Memoria agotada; ya está en `t3.medium` con swap persistente. Si pasa: Stop → Start |
 | `notificaciones` no registra avisos | Revisar `RABBIT_ENABLED=true`, `RABBITMQ_ADDRESSES` (IP privada de `cleanfresh-mq`) y las credenciales en el `.env`; el grupo `cleanfresh-sg-mq` debe aceptar 5672–5673 desde `cleanfresh-sg-ms`. `docker compose logs notificaciones` muestra si se conectó (`Created new connection`) |
-| La campanita no muestra avisos | Revisar que `notificaciones` esté `Up` y con `RABBIT_ENABLED=true`, y que el BFF tenga `NOTIFICACIONES_SERVICE_URL` (si falta, apunta a `localhost:8083`). Probar `curl localhost:8083/api/notificaciones` en la EC2 #2 |
+| El módulo de notificaciones no muestra avisos (o la campanita no cuenta) | Revisar que `notificaciones` esté `Up` y con `RABBIT_ENABLED=true`, y que el BFF tenga `NOTIFICACIONES_SERVICE_URL` (si falta, apunta a `localhost:8083`). Probar `curl localhost:8083/api/notificaciones` en la EC2 #2 |
 | Cambiar el estado de una orden da error en la app | Un Operador solo puede cambiar órdenes de la sucursal que tiene en turno (403 si es de otra). `orders` responde 400 si el estado no es válido |
 | 401 con token válido | El token expiró: cerrar sesión y volver a entrar |
 | Se cambió la IP pública de la EC2 #2 o de `cleanfresh-mq` | Solo afecta al SSH y al panel; el BFF y los servicios usan las IP privadas (`172.31.39.91` y `172.31.18.141`) |

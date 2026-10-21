@@ -243,6 +243,7 @@ roles IAM propios.
 - **RDS no es un PostgreSQL con superusuario.** `CREATE DATABASE ... OWNER x`
   falla si el usuario maestro no es miembro de `x`; hay que hacer
   `GRANT x TO postgres` antes.
+- **El disco de 8 GB de la EC2 #2 se llena.** Cada `docker compose up --build` deja imágenes y caché de compilación; tras varias reconstrucciones el disco llegó al 100 % y Maven falló con `No space left on device` (el contenedor en marcha no se vio afectado). Se resuelve con `docker builder prune -f` (y `docker image prune -f`) antes de reconstruir; conviene mirar `df -h /` antes de desplegar.
 - **Una `t3.micro` no basta para RabbitMQ.** La EC2 de mensajería se lanzó por error como `t3.micro` (1 GiB, insuficiente para dos nodos); se cambió a `t3.medium` (detener, cambiar el tipo, iniciar).
 - **El segundo nodo de RabbitMQ se reinicia en el primer arranque** (se une al clúster y vuelve a arrancar). La política de espejos solo se crea bien si se aplica cuando los dos nodos ya están estables; `mq-init` lo espera y lo comprueba.
 - **Cinco JVM en una `t3.small` no caben.** Tras un reinicio la máquina dejó de

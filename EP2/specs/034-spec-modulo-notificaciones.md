@@ -138,4 +138,24 @@ leído cambia lo que devuelve el siguiente GET), un script por rol:
 | 9 | Vacío, error y móvil | ✅ Cumple: "No tienes avisos sin leer", "No hay avisos por ahora", mensaje de error si falla la consulta, sin desborde a 390 px |
 | 10–12 | Backend | ✅ Cumple (pruebas automáticas) |
 
-**E — AWS:** ⏳ pendiente (ver más abajo cuando se despliegue).
+**E — AWS (hecho).** `notificaciones` y el BFF reconstruidos y reiniciados. Contra el servicio real y su base en
+la RDS (una orden de prueba y `PUT /api/notificaciones/{id}/leida` desde la EC2 #2):
+
+| Prueba | Resultado |
+|---|---|
+| Marcar con otra sucursal (Maipú) / como cliente / aviso inexistente | `404` y el aviso sigue sin leer |
+| Sin filtro / filtro en blanco | `400` |
+| Con la sucursal correcta (y repetido, sin distinguir mayúsculas) | `204` las dos veces; el aviso queda leído |
+| Avisos sin leer de Providencia | bajaron de 1 a 0: solo se marcó ese aviso |
+| BFF `POST /api/notificaciones/{id}/leida` sin token (directo y por API Gateway) | `401` |
+
+Las respuestas por rol del BFF (Cliente 204/404, Operador 204/404, Admin 403) se probaron con las pruebas
+automáticas; con un token real de Cognito falta confirmarlas a mano en la app (ver "Pendiente").
+
+**Pendiente:** probar el módulo en la app real con sesión de cada rol. No se pudo probar con un token real el
+`403` del Admin en `POST /api/notificaciones/{id}/leida`.
+
+Incidente del despliegue: la primera reconstrucción de `notificaciones` falló con `No space left on device` (el
+disco de 8 GB de la EC2 #2 estaba al 100 % por las imágenes y la caché de las reconstrucciones anteriores). El
+contenedor anterior siguió funcionando; se liberó la caché de compilación (`docker builder prune`) y se repitió.
+
