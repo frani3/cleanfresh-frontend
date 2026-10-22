@@ -352,8 +352,24 @@ Operador → Cliente, y Operador → Cliente con el servicio caído. En cada pau
 | 6. Operador → Cliente | *Consumer ack* sube | El Cliente recibe "fue aceptado" y su lista se actualiza sola |
 | 7. Operador → Cliente con el servicio caído | **Ready = 1** en `q.cmd.email`; Get messages → `type = ORDEN_ESTADO`, `destinatario = CLIENTE`, `estado = EN_PREPARACION` | El Cliente recibe "está en preparación" al volver el servicio |
 
-**A mano** (si se prefiere hacerlo desde la app): el mismo recorrido con una sesión de Cliente y otra de Operador, y
-`sudo docker compose stop notificaciones` / `sudo docker compose start notificaciones` en la EC2 de microservicios.
+**A mano, con la app real: el Cliente solicita un servicio mientras el servicio de notificaciones está caído.** Lo que se "cae" es el microservicio
+`ms-cleanfresh-notificaciones`, que es el que consume los mensajes y genera el aviso para el Operador; el resto del sistema sigue funcionando.
+Desde la carpeta `EP2/despliegue` de tu PC (PowerShell), con la IP pública de la EC2 `cleanfresh-ms`:
+
+| Paso | Qué haces | Qué se ve en la consola de RabbitMQ (**Queues**) |
+|---|---|---|
+| 1 | Abre el panel en **Queues** y ubica `q.cmd.email` y `q.cmd.kitchen` | *Ready = 0* y *Consumers = 1* en las dos |
+| 2 | `.\servicio-notificaciones.ps1 bajar -Ip <IP-EC2-ms>` | *Consumers = 0* (tarda unos segundos en reflejarse); en **Connections** solo queda `ms-cleanfresh-orders` |
+| 3 | En la app, como **Cliente**: Catálogo → **Solicitar** → Confirmar. El pedido aparece en "Tus pedidos" (el sistema no depende de notificaciones) | *Ready = 1* en `q.cmd.email` (el aviso al Operador) y en `q.cmd.kitchen` (el ticket de taller), en unos 5 a 10 s |
+| 4 | En el panel: `q.cmd.email` → **Get messages** (*Ack mode: Nack message requeue true*, 1 mensaje) | **Properties**: `type = ORDEN_CREADA`, `delivery_mode = 2` (persistente), headers `destinatario = SUCURSAL`, `estado = CREADO`; el cuerpo es el JSON del pedido |
+| 5 | (Opcional) haz más pedidos como Cliente | *Ready* sube a 2, 3... Los mensajes **no caducan ni se pierden**: se pueden dejar el tiempo que haga falta |
+| 6 | `.\servicio-notificaciones.ps1 subir -Ip <IP-EC2-ms>` (espera a que responda) | *Consumers = 1* y *Ready* baja a 0; en el gráfico **Message rates**, *Deliver* y *Consumer ack* suben |
+| 7 | En la app, como **Operador** (con la sucursal en turno del pedido) | Una notificación "Nuevo pedido ORD-00XX" por cada pedido que hizo el Cliente mientras el servicio estaba caído |
+
+Para ver cómo está el servicio sin tocarlo: `.\servicio-notificaciones.ps1 estado -Ip <IP-EC2-ms>`. Mientras el servicio está caído, el módulo de
+notificaciones de la app puede mostrar "No se pudieron actualizar los avisos": es lo esperado, porque los avisos los sirve ese mismo microservicio.
+Si el script no conecta, la IP cambió (cambia cada vez que se apaga el laboratorio) o tu IP no está en el grupo de seguridad de la EC2. Con `-Mostrar`
+imprime el comando `ssh` sin ejecutarlo.
 
 **Tipos de notificación que se ven en la consola** (propiedad `type` del mensaje, Spec 039): `ORDEN_CREADA` (pedido nuevo, para la sucursal; el mismo tipo lleva el
 ticket de taller, con `destinatario = TALLER`), `ORDEN_LISTA` (pedido despachado, para el cliente; también la boleta) y `ORDEN_ESTADO` (aceptado, en preparación,
