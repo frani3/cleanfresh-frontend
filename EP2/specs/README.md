@@ -25,3 +25,6 @@ del índice de EP1; la plantilla está en
 | 037 | Spec | Topología de RabbitMQ como la guía del profesor (políticas de DLX y bindings del topic) | ✅ Implementada y verificada en local y en AWS | [037-spec-topologia-como-la-guia.md](037-spec-topologia-como-la-guia.md) |
 | 038 | Spec | Demostración de las notificaciones: servicio visible por su nombre en RabbitMQ y script de la demo | ✅ Implementada y verificada en AWS | [038-spec-demostracion-notificaciones.md](038-spec-demostracion-notificaciones.md) |
 | 039 | Spec | El tipo de notificación visible en la consola de RabbitMQ (propiedad `type` y cabeceras) | ✅ Implementada y verificada en AWS | [039-spec-tipo-de-notificacion-en-rabbitmq.md](039-spec-tipo-de-notificacion-en-rabbitmq.md) |
+| 040 | Fix | Las colas quedan caídas (down) al detener el nodo principal de RabbitMQ | 📝 Borrador | [040-fix-rabbitmq-cola-caida-al-detener-nodo.md](040-fix-rabbitmq-cola-caida-al-detener-nodo.md) |
+| 041 | Fix | Un solo docker compose que levante todo el backend | 📝 Borrador | [041-fix-un-solo-docker-compose.md](041-fix-un-solo-docker-compose.md) |
+| 042 | Fix | Nombres de colas, exchanges y bindings centralizados en la configuración | 📝 Borrador | [042-fix-nombres-de-topologia-centralizados.md](042-fix-nombres-de-topologia-centralizados.md) |
