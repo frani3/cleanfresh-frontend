@@ -224,3 +224,19 @@ contrato incumplido: se comprueba que lo bueno se guarda aunque haya malos en me
 
 Nota: la primera vez que se reinició Docker, los brokers se reiniciaron un par de veces antes de estabilizarse (ZooKeeper tardó en liberar los registros de la sesión anterior); `restart: unless-stopped`
 los recuperó solos, con los tópicos intactos y sin particiones sub-replicadas.
+
+## 5. Panel Admin con analítica y auditoría reales (Spec 045)
+
+Chrome contra una copia del frontend (puerto 3010) con una sesión Admin simulada y un proxy que hace de BFF y le sirve los datos **reales** de `reportes` y `auditoria` (los eventos de las secciones 3 y 4).
+
+**Analítica** (24 horas): 8 pedidos (3 entregados, 2 cancelados), ventas $65.500, ticket promedio $10.917, lead time, estados activos (1 creado, 1 aceptado, 1 en preparación), ventas por hora en hora local, servicios más pedidos y pedidos por sucursal.
+
+![Analítica](capturas/panel-admin-analitica.png)
+
+Con el rango de 7 días el gráfico pasa a agruparse por día: ![Analítica 7 días](capturas/panel-admin-analitica-7d.png)
+
+**Auditoría**: filtro por usuario `luis` (7 registros, de op-luis, con la IP de origen), lista paginada y, al pulsar una orden, su historia completa (creada por `cli-beto`, luego aceptada, preparada, despachada y entregada por `op-luis`).
+
+![Auditoría](capturas/panel-admin-auditoria.png)
+
+Compilación: `CI=true npm run build` → "Compiled successfully" (el linter trata las advertencias como error). Pruebas de lógica pura del frontend: 46 en verde (23 nuevas de `utils/reports`: formato de minutos y dinero, barras, ventas por hora y por día, estados activos, etiquetas de eventos, parámetros de filtro y paginado).

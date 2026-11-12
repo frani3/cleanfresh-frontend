@@ -73,7 +73,9 @@ no el correo.
 | ms-cleanfresh-reportes (EP2) | http://localhost:8084 |
 | ms-cleanfresh-auditoria (EP2) | http://localhost:8085 |
 | ms-cleanfresh-mq-admin (EP2) | http://localhost:8086 |
+| ms-cleanfresh-kafka-admin (EP5) | http://localhost:8087 |
 | RabbitMQ (AMQP / panel), clúster local de `EP2/despliegue/mq/` | localhost:5672–5673 / http://localhost:15672–15673 |
+| Kafka (3 brokers) y Kafka-UI, de `EP5/despliegue/kafka/` y `kafka-ui/` | localhost:9092, 9093 y 9094 / http://localhost:8090 |
 
 ---
 
@@ -269,6 +271,8 @@ src/
 │   ├── Navbar.jsx                  # Logo, nombre usuario, rol, botón logout
 │   ├── NotificationBell.jsx        # Campanita del encabezado: contador de sin leer que lleva al módulo (Specs 030 y 034)
 │   ├── NotificationsPanel.jsx      # Módulo de notificaciones: lista, filtro Todas/Sin leer y botón de leído (Spec 034)
+│   ├── AnalyticsPanel.jsx          # Pestaña Analítica del Admin: KPIs, lead time, ventas por hora, top servicios (Spec 045)
+│   ├── AuditPanel.jsx              # Pestaña Auditoría del Admin: filtros, línea de tiempo paginada e historia de una orden (Spec 045)
 │   └── OrderFilters.jsx            # Búsqueda y filtros de órdenes (Spec 031)
 ├── hooks/
 │   ├── useNotifications.js         # Una sola consulta de avisos cada 15 s, compartida por campanita y módulo (Spec 034)
@@ -287,7 +291,7 @@ El frontend usa un **diseño bento grid** en una sola página. No hay React Rout
 
 | Rol | Tarjetas visibles |
 |---|---|
-| Admin | Estado BFF, KPIs, Órdenes recientes, Catálogo, Reportería por sucursal, Auditoría |
+| Admin | Estado BFF, KPIs, Órdenes recientes, Notificaciones, Catálogo, **Analítica** y **Auditoría** (las dos con datos reales de Kafka, Spec 045) |
 | Operador | KPIs operacionales, Órdenes, Catálogo |
 | Cliente | Mis órdenes, Catálogo con botón solicitar, Puntos de fidelidad |
 
@@ -356,6 +360,28 @@ variantes `.high`, `.thermal` y `.pdf`) y `notificaciones` los consume con ACK m
 colas, exchanges y bindings, declara la topología base y da métricas con alerta de DLQ; se llega solo por
 el BFF (`/api/mq/**`, rol Admin). Archivos y scripts de verificación en `EP2/despliegue/mq/`; detalle en
 `EP2/specs/033-spec-rabbitmq.md` y `EP2/ARQUITECTURA.md`. Es opcional en local (`RABBIT_ENABLED=false`).
+
+---
+
+### Eventos y analítica con Kafka (Specs 044 y 045, EP5)
+
+RabbitMQ sigue siendo para **comandos**; **Kafka es para eventos**: hechos que ya ocurrieron y que varios servicios leen a su ritmo. Clúster de **Zookeeper ×3 y 3
+brokers** (`EP5/despliegue/kafka/`, con `kafka-init` que crea los tópicos) y **Kafka-UI** en su propio compose (`EP5/despliegue/kafka-ui/`). Tópicos (3 particiones y 3 réplicas,
+`min.insync.replicas=2`): `orders.events` (`delete`, 7 días; clave = número de orden), `audit.timeline` (`compact,delete`, 30 días) y un DLT por consumidor
+(`orders.events.reportes.DLT`, `orders.events.auditoria.DLT`, `audit.timeline.auditoria.DLT`, 14 días).
+
+- **`orders` produce** (`KAFKA_ENABLED=true`; apagado por defecto): un evento de negocio por cada creación o cambio de estado en `orders.events` (`OrderCreated`, `OrderAccepted`,
+  `OrderPreparing`, `OrderDispatched`, `OrderDelivered`, `OrderCancelled`) y un registro de auditoría en `audit.timeline` (quién, qué, cuándo, desde dónde). El envío es asíncrono:
+  si Kafka cae, la orden se guarda y responde igual. El BFF le manda quién hizo la acción en las cabeceras `X-Actor` (el `username` del token) y `X-Origen` (la IP).
+  `catalog` es de solo lectura y no publica.
+- **`reportes` consume** `orders.events` (grupo `reportes-kpis`) y calcula KPIs, ventas por hora, lead time, estados activos y servicios más pedidos (`/api/reportes/**`).
+  **`auditoria` consume** `audit.timeline` y `orders.events` (grupo `auditoria-registro`) y guarda la línea de tiempo y la trazabilidad de cada orden (`/api/auditoria/**`, solo lectura).
+  Los dos usan PostgreSQL (`reportes_db` y `auditoria_db`), commit manual, idempotencia por `eventId`, validación, reintentos con espera creciente y DLT con el mensaje original y el error.
+- **`ms-cleanfresh-kafka-admin`** (:8087, `AdminClient`): crea, lista, describe, modifica y elimina tópicos y sus configuraciones, sube particiones, y lista y describe consumer groups con
+  su lag (también resetea offsets); se llega solo por el BFF (`/api/kafka/**`, rol Admin). Su topología base está en su `application.yaml`.
+- El BFF republica `/api/reportes/**` y `/api/auditoria/**` como proxies de solo lectura (solo Admin, lista blanca de rutas). El panel Admin tiene las pestañas **Analítica** y **Auditoría**
+  con esos datos (`AnalyticsPanel.jsx` y `AuditPanel.jsx`).
+- Documentación, evidencia y specs en [`EP5/README.md`](EP5/README.md).
 
 ---
 
@@ -543,7 +569,7 @@ de tocar algo ya resuelto.
 - [ ] El mapa `SUCURSAL_POR_OPERADOR` en `OrderService.java` (BFF) sigue con el valor viejo de Azure (`operador@cleanfreshchain.onmicrosoft.com`), así que no coincide con el `username` (UUID) del Operador de Cognito. No bloquea nada: el Operador filtra por su selector "Sucursal en turno" (`?sucursal=`), y el mapa solo es un respaldo
 - [x] Grupos de Cognito `Admin`/`Operador`/`Cliente` confirmados en vivo en EP2: el Admin ve Reportería/Auditoría y recibe 200 en `/api/reportes` y `/api/auditoria`; el Operador recibe 403 en ambas
 - [ ] **Seguridad:** `GET /api/orders` devuelve todas las órdenes a un Cliente; hoy es la pantalla la que filtra las suyas en el navegador. Debería filtrarse en el BFF por el `username` del token (como ya se hace con los avisos)
-- [ ] Texto "JWT Azure CIAM" en la tarjeta de estado del panel Admin: resto cosmético de la migración a Cognito
+- [x] Texto "JWT Azure CIAM" en la tarjeta de estado del panel Admin — corregido a "JWT AWS Cognito" (Spec 045)
 - [ ] Verificar el 403 de `/api/reportes` y `/api/auditoria` con el rol Cliente (solo se probó Operador)
 - [x] Corregir que al hacer F5 con rol Admin/Operador no muestre vista de Cliente — ya no aplica el workaround original de MSAL; `react-oidc-context` no tiene ese problema de caché
 - [x] Mejorar diseño bento: ajustar overflow de tabla de órdenes, max-height del JSON del BFF — resuelto (`overflow-x: auto` + columnas compactas en la tabla, `max-height: 300px` en el bloque de estado del BFF)

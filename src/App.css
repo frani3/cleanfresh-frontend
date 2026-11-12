@@ -2132,3 +2132,238 @@ input {
   font-size: 0.75rem;
   color: var(--color-text-muted);
 }
+
+/* =========================================================
+   Analítica y auditoría del panel Admin (Spec 045)
+   ========================================================= */
+
+.analytics {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.analytics-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.analytics-title {
+  margin: 0.2rem 0 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.analytics-foot {
+  margin: 0;
+  font-size: 0.65rem;
+  color: var(--color-text-muted);
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.6rem;
+}
+
+.kpi-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-secondary-soft);
+  padding: 0.6rem 0.75rem;
+  min-width: 0;
+}
+
+.kpi-label {
+  font-size: 0.65rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.kpi-value {
+  font-size: 1.15rem;
+  color: var(--color-text);
+}
+
+.kpi-hint {
+  font-size: 0.62rem;
+  color: var(--color-text-muted);
+}
+
+.state-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.state-chip {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  border-radius: 999px;
+  background: var(--color-muted);
+  padding: 0.25rem 0.75rem;
+  font-size: 0.7rem;
+  color: var(--color-text);
+}
+
+.state-chip strong {
+  font-size: 0.9rem;
+}
+
+.sales-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 150px;
+  padding: 0.5rem 0.25rem 0;
+  overflow-x: auto;
+}
+
+.sales-col {
+  display: flex;
+  flex: 1 0 14px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  min-width: 14px;
+}
+
+.sales-bar {
+  width: 100%;
+  min-height: 0;
+  border-radius: 3px 3px 0 0;
+  background: linear-gradient(180deg, var(--color-sky-400), var(--color-indigo-500));
+}
+
+.sales-label {
+  margin-top: 0.25rem;
+  font-size: 0.55rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.analytics-split {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.2rem;
+}
+
+.audit-module {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.audit-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  align-items: end;
+  gap: 0.6rem;
+}
+
+.audit-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.65rem;
+  color: var(--color-text-muted);
+}
+
+.audit-filters input,
+.audit-filters select {
+  border: 1px solid var(--color-muted);
+  border-radius: var(--radius-sm);
+  background: var(--color-card, #fff);
+  padding: 0.35rem 0.5rem;
+  font-size: 0.72rem;
+  color: var(--color-text);
+  min-width: 0;
+}
+
+.audit-filter-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.audit-link {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  color: var(--color-indigo-500);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.audit-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  font-size: 0.68rem;
+  color: var(--color-text-muted);
+}
+
+.audit-pager > div {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.audit-page-number {
+  font-size: 0.68rem;
+}
+
+.audit-trace {
+  border: 1px solid var(--color-muted);
+  border-radius: var(--radius-sm);
+  padding: 0.7rem 0.8rem;
+}
+
+.audit-trace-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.6rem;
+  font-size: 0.75rem;
+  color: var(--color-text);
+}
+
+.audit-trace-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.audit-trace-steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+.audit-trace-steps li > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.audit-state {
+  margin-left: 0.3rem;
+  border-radius: 999px;
+  background: var(--color-muted);
+  padding: 0.05rem 0.5rem;
+  font-size: 0.6rem;
+  font-weight: 600;
+}

@@ -33,6 +33,8 @@ import {
 import { getHealth, getCatalog, getOrders, createOrder, updateOrderStatus } from "../services/apiService";
 import NotificationBell from "../components/NotificationBell";
 import NotificationsPanel from "../components/NotificationsPanel";
+import AnalyticsPanel from "../components/AnalyticsPanel";
+import AuditPanel from "../components/AuditPanel";
 import useNotifications, { POLL_MS } from "../hooks/useNotifications";
 import OrderFilters, { OrderListFooter } from "../components/OrderFilters";
 import useOrderFilters from "../hooks/useOrderFilters";
@@ -67,21 +69,8 @@ function isServiceAvailableAnywhere(service) {
   return Object.values(service.branches).some(Boolean);
 }
 
-const BRANCH_ACTIVITY = [
-  { branch: "Providencia", orders: 42 },
-  { branch: "Ñuñoa", orders: 35 },
-  { branch: "Las Condes", orders: 28 },
-  { branch: "Maipú", orders: 19 },
-];
-
-const BRANCHES = BRANCH_ACTIVITY.map((b) => b.branch);
-
-const AUDIT_LOG = [
-  { time: "11:32", actor: "operador@cf.co", action: "Actualizó ORD-2047 → EN_PREPARACION", level: "info" },
-  { time: "11:05", actor: "admin@cf.co", action: "Modificó precio de catálogo (Planchado)", level: "warn" },
-  { time: "10:48", actor: "auth.azure", action: "Token JWT renovado (Azure CIAM)", level: "info" },
-  { time: "10:12", actor: "system", action: "Intento de acceso rechazado (rol insuficiente)", level: "error" },
-];
+// Las sucursales de la red. La analítica por sucursal y la auditoría ya no son datos fijos: vienen de Kafka (Spec 045).
+const BRANCHES = ["Providencia", "Ñuñoa", "Las Condes", "Maipú"];
 
 const POINTS = 450;
 const POINTS_GOAL = 600;
@@ -913,8 +902,8 @@ const ADMIN_TABS = [
   { key: "orders", label: "Órdenes recientes", subtitle: "Actividad en tiempo real", icon: ClipboardList },
   { key: "notifications", label: "Notificaciones", subtitle: "Avisos de todos los usuarios (solo lectura)", icon: Bell },
   { key: "catalog", label: "Catálogo", subtitle: "Servicios disponibles", icon: LayoutGrid },
-  { key: "branches", label: "Analítica por sucursal", subtitle: "Órdenes e ingresos", icon: BarChart3 },
-  { key: "audit", label: "Registro de auditoría", subtitle: "Eventos de seguridad", icon: ShieldCheck },
+  { key: "branches", label: "Analítica", subtitle: "KPIs, ventas por hora, lead time y servicios más pedidos (Kafka)", icon: BarChart3 },
+  { key: "audit", label: "Auditoría", subtitle: "Quién hizo qué, cuándo y desde dónde (Kafka)", icon: ShieldCheck },
 ];
 
 function AdminView({
@@ -937,7 +926,6 @@ function AdminView({
   const active = orders.filter((o) => o.status !== "ENTREGADO").length;
   const processing = orders.filter((o) => o.status === "EN_PREPARACION").length;
   const customers = new Set(orders.map((o) => o.customer)).size;
-  const maxOrders = Math.max(...BRANCH_ACTIVITY.map((b) => b.orders));
 
   const [serviceModal, setServiceModal] = useState(null); // null | "new" | service object
   const [orderModal, setOrderModal] = useState(null); // null | "new" | order object
@@ -998,7 +986,7 @@ function AdminView({
             </div>
             <div className="health2-row health2-row-muted">
               <span className="health2-row-left">
-                <KeyRound size={13} /> JWT Azure CIAM
+                <KeyRound size={13} /> JWT AWS Cognito
               </span>
               <span style={{ fontSize: "0.72rem", fontWeight: 700 }}>
                 {healthError ? "No validado" : "Válido"}
@@ -1229,36 +1217,9 @@ function AdminView({
           </>
         )}
 
-        {activeTab === "branches" && (
-          <div className="branch2-list">
-            {BRANCH_ACTIVITY.map((b) => (
-              <div key={b.branch}>
-                <div className="branch2-row-head">
-                  <span className="branch-name">{b.branch}</span>
-                  <span className="branch-count">{b.orders} órdenes</span>
-                </div>
-                <div className="branch2-bar-track">
-                  <div className="branch2-bar-fill" style={{ width: `${(b.orders / maxOrders) * 100}%` }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        {activeTab === "branches" && <AnalyticsPanel />}
 
-        {activeTab === "audit" && (
-          <ul className="audit2-list">
-            {AUDIT_LOG.map((log, i) => (
-              <li key={i} className="audit2-item">
-                <span className={`audit2-dot audit2-dot-${log.level}`} />
-                <div className="audit2-body">
-                  <p className="audit2-action">{log.action}</p>
-                  <p className="audit2-actor">{log.actor}</p>
-                </div>
-                <span className="audit2-time">{log.time}</span>
-              </li>
-            ))}
-          </ul>
-        )}
+        {activeTab === "audit" && <AuditPanel />}
       </BentoCard>
     </>
   );

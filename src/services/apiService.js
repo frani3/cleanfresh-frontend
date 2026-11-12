@@ -130,3 +130,41 @@ export async function markNotificationRead(id, sucursal) {
     params: sucursal ? { sucursal } : undefined,
   });
 }
+
+// Spec 045: reportes calculados con los eventos de Kafka (solo Admin). `range` es last1h, last24h, last7d o last30d.
+export async function getReportKpis(range) {
+  const response = await apiClient.get("/reportes/kpis", { params: { range } });
+  return response.data;
+}
+
+export async function getSalesByHour(range) {
+  const response = await apiClient.get("/reportes/ventas-por-hora", { params: { range } });
+  return response.data;
+}
+
+export async function getTopServices(range) {
+  const response = await apiClient.get("/reportes/top-servicios", { params: { range, limite: 5 } });
+  return response.data;
+}
+
+export async function getBranchReport(range) {
+  const response = await apiClient.get("/reportes", { params: { range } });
+  return response.data;
+}
+
+// Spec 045: auditoría de Kafka (solo Admin). `params` son los filtros ya armados (usuario, tipo, entidadId, desde, hasta, pagina, tamano).
+export async function getAuditLog(params) {
+  const response = await apiClient.get("/auditoria", { params });
+  return response.data;
+}
+
+export async function getAuditTypes() {
+  const response = await apiClient.get("/auditoria/tipos");
+  return response.data;
+}
+
+// La historia completa de una orden: cada estado con quién lo hizo y desde dónde.
+export async function getOrderTrace(numeroOrden) {
+  const response = await apiClient.get(`/auditoria/ordenes/${encodeURIComponent(numeroOrden)}`);
+  return response.data;
+}
