@@ -70,6 +70,7 @@ src/
 |---|---|
 | [`CLAUDE.md`](CLAUDE.md) | Contexto completo del proyecto: stack, Cognito, AWS, roles, decisiones técnicas y pendientes |
 | [`EP2/README.md`](EP2/README.md) | **Índice de la entrega 2**: arquitectura, despliegue, operación, demostraciones de RabbitMQ, evidencia y specs |
+| [`EP5/README.md`](EP5/README.md) | **Índice de la entrega 5**: Kafka (Zookeeper, brokers, Kafka-UI), specs 044 en adelante y evidencia |
 | [`EP1/`](EP1/) | Entrega 1 (cerrada): specs 001–028, evidencia y explicaciones de Cognito y del BFF |
 
 Los cambios funcionales se documentan con Spec-Driven Development manual: cada spec o fix tiene sus Acceptance Criteria y su

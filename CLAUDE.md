@@ -497,7 +497,7 @@ AWS Cognito (User Pool, Hosted UI)
 
 ---
 
-## Documentación por entrega (`EP1/` y `EP2/`)
+## Documentación por entrega (`EP1/`, `EP2/` y `EP5/`)
 
 La documentación se separa por entrega, en la raíz del repo del frontend
 (`CLAUDE.md` y `README.md` se quedan en la raíz: Claude Code carga el primero
@@ -506,13 +506,16 @@ automáticamente y el segundo es la portada del repo):
 - **`EP1/`** — entrega 1 (cerrada): Cognito + BFF + API Gateway + EC2.
   Incluye `EP1/specs/` (specs/fixes 001–028), `EP1/EVIDENCIA-EP1.md` y las
   explicaciones `EP1/EXPLICACION-*.md`.
-- **`EP2/`** — entrega 2 (en curso): toda documentación nueva va acá. El índice
+- **`EP2/`** — entrega 2: RabbitMQ y despliegue en AWS. El índice
   de todo es [`EP2/README.md`](EP2/README.md) (Spec 043):
   - [`EP2/ARQUITECTURA.md`](EP2/ARQUITECTURA.md) y `EP2/EVIDENCIA-EP2.md`
   - `EP2/demostraciones/`: [`OPERACION.md`](EP2/demostraciones/OPERACION.md) (operar y verificar; antes
     `GUIA-DEMOSTRACION.md`) y [`RABBITMQ.md`](EP2/demostraciones/RABBITMQ.md) (las 3 demos de RabbitMQ)
   - `EP2/despliegue/`: compose, scripts y `mq/` (clúster RabbitMQ)
-  - [`EP2/specs/README.md`](EP2/specs/README.md): índice de specs (029 en adelante)
+  - [`EP2/specs/README.md`](EP2/specs/README.md): índice de specs (029 a 043)
+- **`EP5/`** — entrega 5 (en curso): **Kafka** para eventos y analítica, además de RabbitMQ (comandos). Índice en
+  [`EP5/README.md`](EP5/README.md): `despliegue/kafka/` (Zookeeper ×3 + brokers ×3), `despliegue/kafka-ui/`, `specs/` (044 en adelante)
+  y `EVIDENCIA-EP5.md`. Toda documentación nueva de Kafka va acá.
 
 **Reglas de la documentación (Spec 043):** los datos que cambian (IP, recursos) se escriben una sola vez, en este
 archivo, y los demás documentos lo enlazan; ningún archivo del repo lleva contraseñas ni tokens; los otros 7 repos

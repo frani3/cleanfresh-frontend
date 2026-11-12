@@ -1,0 +1,30 @@
+# Kafka-UI de Clean&Fresh (Spec 044): administrar brokers, tópicos y consumer groups desde el navegador.
+#
+# Requiere el clúster de ../kafka levantado (comparte su red, cleanfresh-kafka-net).
+#   cp .env.example .env     # definir usuario y clave de la interfaz
+#   docker compose up -d
+#   http://localhost:8090    (en AWS: http://<IP-EC2-kafka>:8090, solo desde la IP del autor)
+name: cleanfresh-kafka-ui
+
+services:
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    restart: unless-stopped
+    networks: [kafka-net]
+    ports: ["8090:8080"]
+    environment:
+      KAFKA_CLUSTERS_0_NAME: cleanfresh
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka1:29092,kafka2:29092,kafka3:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zk1:2181,zk2:2181,zk3:2181
+      KAFKA_CLUSTERS_0_READONLY: "false"
+      DYNAMIC_CONFIG_ENABLED: "true"
+      # Acceso con usuario y clave (del .env, no se versionan).
+      AUTH_TYPE: LOGIN_FORM
+      SPRING_SECURITY_USER_NAME: ${KAFKA_UI_USER:?definir KAFKA_UI_USER en .env}
+      SPRING_SECURITY_USER_PASSWORD: ${KAFKA_UI_PASSWORD:?definir KAFKA_UI_PASSWORD en .env}
+      JAVA_OPTS: -Xms256m -Xmx512m
+
+networks:
+  kafka-net:
+    external: true
+    name: cleanfresh-kafka-net
