@@ -98,6 +98,7 @@ Salidas en [`../EVIDENCIA-EP5.md`](../EVIDENCIA-EP5.md). Se completa al cerrar c
 | 1 | 3 Zookeeper y 3 brokers | ✅ Cumple en local (fase 2): Zookeeper con 1 líder y 2 seguidores, 3 brokers `healthy`. Falta repetirlo en AWS (AC 11) |
 | 2 | Kafka-UI | ✅ Cumple en local: clúster `online` con 3 brokers y 5 tópicos; se crea y borra un tópico desde la interfaz |
 | 3 | Tópicos 3×3 con sus parámetros | ✅ Cumple en local: `--describe` de los 5 tópicos; `kafka-init` es repetible |
-| 4 a 10 | — | ⏳ Pendiente (fases 3 a 6) |
+| 9 | Administrador de Kafka (tópicos, configuraciones y consumer groups; solo Admin por el BFF) | ✅ Cumple en local (fase 3): todas las operaciones probadas contra el clúster, 36 pruebas del servicio y 11 del BFF (Cliente y Operador 403, sin token 401). Falta repetirlo con login real por API Gateway en AWS (AC 11) |
+| 4 a 8, 10 | — | ⏳ Pendiente (fases 4 a 6) |
 | 11 | Despliegue en AWS | ⏳ Pendiente (fase 7) |
 | 12 | Documentación | 🟡 En curso (`EP5/README.md`, `despliegue/README.md` y `EVIDENCIA-EP5.md` creados; faltan arquitectura y guion de demostración) |
