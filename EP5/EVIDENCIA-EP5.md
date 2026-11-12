@@ -103,3 +103,124 @@ no reducir particiones, tópico base protegido, base idempotente, lag, grupo ine
 de la solicitud tal cual; controlador: 409, 404, 400 y 503; propiedades). BFF: 78 en verde, 11 nuevas (`KafkaAdminRoutesTests`): sin token 401, Operador y
 Cliente 403 en lectura y escritura (GET, POST, PUT y DELETE), Admin reenvía y devuelve el código del administrador tal cual, rutas ajenas 404 y el
 repositorio responde 503 si el administrador no responde.
+
+## 3. Productores: `orders` publica en Kafka (fase 4: ACs 4 y 5)
+
+`orders` con `KAFKA_ENABLED=true` contra el clúster local (3 brokers) y PostgreSQL. Un pedido creado y llevado por sus estados con la API de `orders`
+(con las cabeceras `X-Actor` y `X-Origen` que manda el BFF) produjo estos eventos en `orders.events`. Todos los de una orden cayeron en la misma partición
+(la clave es el número de orden):
+
+```
+Partition:0  type:OrderCreated     ORD-0007  {"type":"OrderCreated","eventId":"9804949c-...","timestamp":"2026-11-12T23:14:06.832606Z","traceId":"582c12b4-...", ...}
+Partition:0  type:OrderAccepted    ORD-0007
+Partition:0  type:OrderPreparing   ORD-0007
+Partition:0  type:OrderDispatched  ORD-0007
+Partition:0  type:OrderDelivered   ORD-0007
+Partition:0  type:OrderCreated     ORD-0008
+Partition:0  type:OrderCancelled   ORD-0008
+```
+
+Un evento completo (DTO tipado `OrderEventMessage`, con las cabeceras `eventId`, `traceId` y `type` visibles en Kafka-UI):
+
+```json
+{ "type": "OrderDelivered", "eventId": "ebe50e71-...", "timestamp": "2026-11-12T23:14:07.202704Z", "traceId": "91cf15df-...", "correlationId": "ORD-0007",
+  "payload": { "numeroOrden": "ORD-0007", "cliente": "cliente-uuid-demo", "clienteNombre": "cliente.demo@cleanfresh.com", "servicio": "Planchado",
+               "sucursal": "Providencia", "total": 9500.0, "estado": "ENTREGADO", "fecha": "2026-11-12", "fechaHora": "2026-11-12T23:14:06.814177Z", "actor": "op-1234" } }
+```
+
+Y en `audit.timeline` (`AuditEntryMessage`), un registro por cada evento, con quién lo hizo y desde dónde (la clave es `orden:<número>:<eventId>`):
+
+```
+orden:ORD-0007:05e96d3b-...  | cliente-uuid-demo | OrderCreated    | ORD-0007 | origen 190.5.59.49 | ms-cleanfresh-orders
+orden:ORD-0007:ecac94ad-...  | op-1234           | OrderAccepted   | ORD-0007 | origen 190.5.59.49 | ms-cleanfresh-orders
+orden:ORD-0007:dc263f88-...  | op-1234           | OrderDelivered  | ORD-0007 | origen 190.5.59.49 | ms-cleanfresh-orders
+orden:ORD-0008:bbff32eb-...  | op-1234           | OrderCancelled  | ORD-0008 | origen None        | ms-cleanfresh-orders
+```
+
+**Con Kafka caído no se bloquea nada.** Con los 3 brokers detenidos, crear una orden respondió igual y rápido, y el fallo quedó en el log con su contexto:
+
+```
+crear orden con Kafka caido: HTTP 201 en 69 ms
+crear orden con Kafka caido: HTTP 201 en 20 ms
+crear orden con Kafka caido: HTTP 201 en 20 ms
+ERROR KafkaOrderEventPublisher : No se pudo publicar OrderCreated (ORD-0009) en orders.events; el cambio de la orden ya quedó guardado
+ERROR KafkaOrderEventPublisher : No se pudo publicar OrderCreated (orden:ORD-0009:58068798-...) en audit.timeline; el cambio de la orden ya quedó guardado
+```
+
+Pruebas automáticas: `ms-cleanfresh-orders` 67 en verde (19 nuevas: eventos por estado, cabeceras, tópicos configurables, envío asíncrono que no bloquea, error de Kafka sin
+propagarse, actor desde las cabeceras, varios publicadores a la vez); BFF 84 en esa fase (6 nuevas del interceptor `X-Actor`/`X-Origen`: toma el último valor de `X-Forwarded-For`,
+limpia saltos de línea y acota el largo).
+
+## 4. Consumidores: `reportes` y `auditoria` (fase 5: ACs 6, 7 y 8)
+
+Los dos servicios contra el mismo clúster y PostgreSQL local (`reportes_db` y `auditoria_db`), con `KAFKA_ENABLED=true`.
+
+**Reconstruyen la historia desde Kafka** (grupo nuevo, `auto.offset.reset=earliest`): al arrancar ya veían los 7 eventos que `orders` había publicado antes.
+
+```
+reportes  /api/reportes/kpis?range=last24h -> pedidos 2, no cancelados 1, ventas 9500.0, entregados 1, cancelados 1, leadTime {muestras 1}
+auditoria /api/auditoria -> total 7 (OrderCancelled ORD-0008, OrderCreated ORD-0008, OrderDelivered ORD-0007, ... , OrderCreated ORD-0007)
+auditoria /api/auditoria/ordenes/ORD-0007:
+   23:14:06 OrderCreated    CREADO          por cliente-uuid-demo desde 190.5.59.49
+   23:14:07 OrderAccepted   ACEPTADO        por op-1234 desde 190.5.59.49
+   23:14:07 OrderPreparing  EN_PREPARACION  por op-1234 desde 190.5.59.49
+   23:14:07 OrderDispatched DESPACHADO      por op-1234 desde 190.5.59.49
+   23:14:07 OrderDelivered  ENTREGADO       por op-1234 desde 190.5.59.49
+```
+
+**Reportes con pedidos nuevos** (5 pedidos más en distintas sucursales y servicios, algunos entregados, uno cancelado):
+
+```
+KPIs 24h: pedidos 7, no cancelados 5, ventas 56000.0, ticket promedio 11200.0, entregados 3, cancelados 2
+          leadTime {promedioMin 0.02, minimoMin 0.01, maximoMin 0.02, muestras 3}
+          estadosActivos {CREADO 0, ACEPTADO 1, EN_PREPARACION 1, DESPACHADO 0}
+top servicios 7d: Planchado 4 pedidos 38000.0 | Lavado y secado 1 pedido 18000.0
+por sucursal: Providencia 3 | Maipu 2
+ventas por hora (24h): 25 filas (una por hora, con ceros); la última: 23:00 -> 5 pedidos 56000.0
+```
+
+**Filtros de la auditoría** (línea de tiempo del más reciente al más antiguo, paginada):
+
+```
+usuario=luis                 -> 7 registros (op-luis)        tipo=OrderCancelled -> 2        entidadId=ORD-0016 -> 5
+desde=2026-11-12&hasta=2026-11-12&tamano=2 -> total 24, pagina 0, devueltos 2
+usuario=ana&tipo=OrderAccepted -> 2 (op-ana: ORD-0014 y ORD-0012)
+desde=ayer -> 400     desde>hasta -> 400     orden inexistente -> 404     POST -> 405     DELETE -> 405
+```
+
+**Consumer groups** (vistos con `ms-cleanfresh-kafka-admin`, `GET /api/kafka/groups/{id}`): dos grupos independientes, cada uno con todas las particiones y lag 0.
+
+```
+reportes-kpis      Stable | asignador cooperative-sticky | lag total 0 | 3 miembros: ms-cleanfresh-reportes-0 [orders.events-0], -1 [orders.events-1], -2 [orders.events-2]
+auditoria-registro Stable | asignador cooperative-sticky | lag total 0 | 6 miembros: audit.timeline-0/1/2 y orders.events-0/1/2 (una partición por hilo)
+```
+
+**Resiliencia: una segunda instancia de `reportes` y la caída de la primera.** Al levantar la instancia B (puerto 8094) el grupo pasó a 4 miembros con la primera instancia
+conservando las 3 particiones (asignación "sticky") y B en espera. Al detener la instancia A (puerto 8084), B tomó las 3 particiones y siguió procesando sin perder nada:
+
+```
+orden nueva con la instancia A detenida: ORD-0017
+instancia B (puerto 8094): pedidos 8 | ventas 65500.0 | estadosActivos {CREADO 1, ACEPTADO 1, EN_PREPARACION 1, DESPACHADO 0}
+reportes-kpis  Stable | miembros 1 | lag total 0 | reportes-instancia-b-0 [orders.events-0, orders.events-1, orders.events-2]
+```
+
+**Mensajes malos al DLT.** Se enviaron a `orders.events` un texto que no es JSON y un evento con tipo desconocido (`OrderInventado`). Los dos consumidores siguieron
+procesando lo demás y cada uno mandó los dos a su propio DLT, con el contexto en el log:
+
+```
+Mensaje NO PROCESADO de orders.events (partición 2, offset 5, clave ORD-0100) va a orders.events.reportes.DLT:  StreamReadException: Unrecognized token 'esto' ...
+Mensaje NO PROCESADO de orders.events (partición 2, offset 6, clave ORD-0100) va a orders.events.reportes.DLT:  EventoInvalidoException: tipo de evento desconocido: OrderInventado
+Mensaje NO PROCESADO de orders.events (partición 2, offset 5, clave ORD-0100) va a orders.events.auditoria.DLT: StreamReadException: Unrecognized token 'esto' ...
+Mensaje NO PROCESADO de orders.events (partición 2, offset 6, clave ORD-0100) va a orders.events.auditoria.DLT: EventoInvalidoException: tipo de evento desconocido: OrderInventado
+
+GET /api/kafka/metricas -> hayAlerta True | DLT con mensajes ['orders.events.auditoria.DLT', 'orders.events.reportes.DLT']  (2 mensajes en cada uno)
+```
+
+En el DLT quedó el mensaje original (`esto no es json`), con las cabeceras `kafka_dlt-exception-fqcn` (`DeserializationException` y `ListenerExecutionFailedException`),
+`kafka_dlt-exception-stacktrace`, `kafka_dlt-original-topic` (`orders.events`) y el grupo (`reportes-kpis`).
+
+Pruebas automáticas: `ms-cleanfresh-reportes` 30 en verde y `ms-cleanfresh-auditoria` 28, cada una con una prueba sobre un **Kafka embebido real** (eventos buenos, repetidos, JSON roto y
+contrato incumplido: se comprueba que lo bueno se guarda aunque haya malos en medio, que el repetido no se duplica y que los malos llegan al DLT con su error). BFF: 92 en verde.
+
+Nota: la primera vez que se reinició Docker, los brokers se reiniciaron un par de veces antes de estabilizarse (ZooKeeper tardó en liberar los registros de la sesión anterior); `restart: unless-stopped`
+los recuperó solos, con los tópicos intactos y sin particiones sub-replicadas.

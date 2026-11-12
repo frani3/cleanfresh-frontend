@@ -31,7 +31,7 @@ pendientes no bloquean a RabbitMQ.
 ```
 orders ──► orders.events ──┬──► reportes   (grupo reportes-kpis)     → KPIs, ventas por hora, lead time, top servicios
    │                       └──► auditoria  (grupo auditoria-registro)
-   └────► audit.timeline ◄── catalog          auditoria (grupo auditoria-registro) → línea de tiempo (quién/qué/cuándo/desde dónde)
+   └────► audit.timeline                      auditoria (grupo auditoria-registro) → línea de tiempo (quién/qué/cuándo/desde dónde)
                 │
  fallos ──► <tópico>.<consumidor>.DLT          kafka-admin ──► AdminClient: tópicos, configuraciones y consumer groups
 ```
@@ -73,8 +73,8 @@ Cada AC indica el indicador de la rúbrica que cubre (EP5 = Evaluación Parcial 
 | 1 | `kafka/docker-compose.yml` levanta 3 nodos Zookeeper (un líder y dos seguidores) y 3 brokers que forman un clúster; `docker compose config` sin errores | EFT "Zookeeper 3 nodos y 3 brokers" |
 | 2 | `kafka-ui/docker-compose.yml` levanta Kafka-UI y muestra los 3 brokers y los tópicos; desde la interfaz se puede crear un tópico y ver sus particiones y réplicas | EFT "Kafka-ui" |
 | 3 | Existen `orders.events` y `audit.timeline`, cada uno con 3 particiones, 3 réplicas, la política y la retención de la tabla; los DLT también | EP5 parámetros de tópicos; EFT "dos tópicos 3×3" |
-| 4 | `orders`, `catalog`, `reportes` y `auditoria` tienen configuración completa del cliente Kafka (bootstrap, serializers, grupo, `acks=all`, idempotencia, commit manual, reintentos, `auto.offset.reset`), en un solo lugar por servicio | EP5 configuración del cliente |
-| 5 | `orders` publica los 6 eventos a `orders.events` y entradas de auditoría a `audit.timeline`; `catalog` publica a `audit.timeline`. Con DTO tipados, serializer JSON, clave por entidad y sin bloquear ni hacer fallar la operación si Kafka no responde | EP5 productores; EFT integración |
+| 4 | `orders`, `reportes` y `auditoria` tienen configuración completa del cliente Kafka (bootstrap, serializers, grupo, `acks=all`, idempotencia, commit manual, reintentos, `auto.offset.reset`), en un solo lugar por servicio | EP5 configuración del cliente |
+| 5 | `orders` publica los 6 eventos a `orders.events` y una entrada de auditoría por cada uno a `audit.timeline` (quién lo hizo y desde qué IP, que el BFF manda en las cabeceras `X-Actor` y `X-Origen`). Con DTO tipados, serializer JSON, clave por entidad y sin bloquear ni hacer fallar la operación si Kafka no responde | EP5 productores; EFT integración |
 | 6 | `reportes` consume `orders.events` y `auditoria` consume ambos tópicos, con `@KafkaListener`, confirmación manual y la lógica de dominio en un servicio aparte | EP5 consumidores y "ambos tópicos" |
 | 7 | Un mensaje inválido (JSON roto o campos obligatorios ausentes) no detiene el consumo: se registra con contexto, se reintenta lo reintentable con espera creciente y va a su DLT con el mensaje original y el error (excepción, partición, offset, consumidor). Los eventos repetidos no duplican resultados (idempotencia por `eventId`) | EP5 manejo de errores |
 | 8 | `reportes` y `auditoria` usan grupos distintos sobre `orders.events` (cada uno recibe todos los eventos) y, dentro de un grupo, dos instancias se reparten las particiones; se ve en Kafka-UI y en el administrador | EP5 consumer groups |
@@ -86,7 +86,7 @@ Cada AC indica el indicador de la rúbrica que cubre (EP5 = Evaluación Parcial 
 ## Plan por fases (cada fase con su verificación y su commit)
 
 1. Specs y estructura `EP5/` (esta spec). 2. Composes de Kafka y Kafka-UI, probados en local. 3. `kafka-admin` y su ruta en el BFF.
-4. Productores en `orders` y `catalog`. 5. Consumidores, errores, DLT y grupos en `reportes` y `auditoria` (Spec 045: sus endpoints y pantallas).
+4. Productores en `orders` (y cabeceras de auditoría en el BFF). 5. Consumidores, errores, DLT y grupos en `reportes` y `auditoria` (Spec 045: sus endpoints y pantallas).
 6. Swagger en los servicios que no lo tienen (Spec 046). 7. Despliegue en AWS y documentación (Spec 047).
 
 ## Verificación
@@ -99,6 +99,11 @@ Salidas en [`../EVIDENCIA-EP5.md`](../EVIDENCIA-EP5.md). Se completa al cerrar c
 | 2 | Kafka-UI | ✅ Cumple en local: clúster `online` con 3 brokers y 5 tópicos; se crea y borra un tópico desde la interfaz |
 | 3 | Tópicos 3×3 con sus parámetros | ✅ Cumple en local: `--describe` de los 5 tópicos; `kafka-init` es repetible |
 | 9 | Administrador de Kafka (tópicos, configuraciones y consumer groups; solo Admin por el BFF) | ✅ Cumple en local (fase 3): todas las operaciones probadas contra el clúster, 36 pruebas del servicio y 11 del BFF (Cliente y Operador 403, sin token 401). Falta repetirlo con login real por API Gateway en AWS (AC 11) |
-| 4 a 8, 10 | — | ⏳ Pendiente (fases 4 a 6) |
+| 4 | Configuración completa del cliente Kafka en `orders`, `reportes` y `auditoria` | ✅ Cumple en local: bootstrap con los 3 brokers, serializers (`JacksonJsonSerializer`, `ErrorHandlingDeserializer`), grupo, `acks=all`, idempotencia, `lz4`, commit manual, `isolation.level=read_committed`, `auto.offset.reset`, `CooperativeStickyAssignor` y timeouts, todo en `spring.kafka.*` de cada `application.yaml` |
+| 5 | `orders` publica los 6 eventos y la auditoría | ✅ Cumple en local (evidencia, sección 3): eventos reales en `orders.events` y `audit.timeline`, DTO tipados, clave por orden, cabeceras visibles, y con los 3 brokers apagados la orden responde 201 en ~20 ms. **Cambio respecto de lo planeado:** `catalog` es de solo lectura (solo tiene GET) y no tiene nada que auditar, así que no publica; los dos tópicos los publica `orders` |
+| 6 | `reportes` y `auditoria` consumen con `@KafkaListener`, lógica aparte | ✅ Cumple en local (sección 4): `OrderEventListener` y `AuditoriaListener` solo entregan y confirman; la lógica está en `EventoOrdenService`, `ReporteService` y `AuditoriaService` |
+| 7 | Errores: validación, reintentos, DLT, idempotencia | ✅ Cumple en local y con Kafka embebido (sección 4): JSON roto y contrato incumplido van a su DLT con el mensaje original y el error, lo bueno se procesa igual, el repetido no se duplica |
+| 8 | Consumer groups distintos y reparto de particiones | ✅ Cumple en local (sección 4): `reportes-kpis` y `auditoria-registro`, cada uno con todo y lag 0; con dos instancias, al caer la primera la segunda tomó las 3 particiones y siguió procesando |
+| 10 | RabbitMQ sigue igual | 🟡 Parcial: las pruebas de RabbitMQ de `orders` (18) siguen en verde y el listener llama a todos los publicadores activos; falta repetir `verificar.sh`, `verificar-flujo.sh` y `demo-notificaciones.sh` con Kafka encendido y apagado (en AWS) |
 | 11 | Despliegue en AWS | ⏳ Pendiente (fase 7) |
 | 12 | Documentación | 🟡 En curso (`EP5/README.md`, `despliegue/README.md` y `EVIDENCIA-EP5.md` creados; faltan arquitectura y guion de demostración) |
