@@ -31,11 +31,37 @@ cd EP2/despliegue
 Termina con `Todo OK`, o con el número de comprobaciones que fallaron. En una
 máquina local sin RabbitMQ (`RABBIT_ENABLED=false`) el paso de los comandos falla a propósito.
 
-## Demostración del desacople
+## Demostraciones
+
+Las demostraciones de RabbitMQ para el profesor (servicio caído, nodo caído y cola muerta), paso a paso, están en
+[`../demostraciones/RABBITMQ.md`](../demostraciones/RABBITMQ.md); la operación general, en
+[`../demostraciones/OPERACION.md`](../demostraciones/OPERACION.md). Scripts de esta carpeta:
+
+### Desacople
 
 `demo-desacople.sh` detiene `notificaciones`, crea una orden, muestra que los comandos esperan en las colas de
 RabbitMQ (sin consumidores) y que, al volver el servicio, los consume y genera el aviso y el ticket de taller.
 
 ```bash
 ./demo-desacople.sh
+```
+
+### Notificaciones en los dos sentidos
+
+`demo-notificaciones.sh` narra y comprueba el recorrido Cliente → Operador y Operador → Cliente, también con `notificaciones`
+caído (con `--pausas` se detiene en cada paso para mirar la consola de RabbitMQ).
+
+```bash
+./demo-notificaciones.sh --pausas
+```
+
+### Bajar y subir `notificaciones` desde tu PC
+
+`servicio-notificaciones.ps1` (PowerShell) detiene o levanta el servicio en la EC2 por SSH, para mostrar cómo RabbitMQ
+conserva los mensajes mientras está caído:
+
+```powershell
+.\servicio-notificaciones.ps1 estado -Ip <IP-EC2-ms>
+.\servicio-notificaciones.ps1 bajar  -Ip <IP-EC2-ms>
+.\servicio-notificaciones.ps1 subir  -Ip <IP-EC2-ms>
 ```

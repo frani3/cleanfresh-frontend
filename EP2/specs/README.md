@@ -28,3 +28,4 @@ del índice de EP1; la plantilla está en
 | 040 | Fix | Las colas quedan caídas (down) al detener el nodo principal de RabbitMQ | 📝 Borrador | [040-fix-rabbitmq-cola-caida-al-detener-nodo.md](040-fix-rabbitmq-cola-caida-al-detener-nodo.md) |
 | 041 | Fix | Un solo docker compose que levante todo el backend | 📝 Borrador | [041-fix-un-solo-docker-compose.md](041-fix-un-solo-docker-compose.md) |
 | 042 | Fix | Nombres de colas, exchanges y bindings centralizados en la configuración | 📝 Borrador | [042-fix-nombres-de-topologia-centralizados.md](042-fix-nombres-de-topologia-centralizados.md) |
+| 043 | Spec | Documentación ordenada en todos los repositorios (índice, demostraciones unificadas, `CLAUDE.md` cortos en los servicios) | ✅ Implementada | [043-spec-documentacion-ordenada.md](043-spec-documentacion-ordenada.md) |

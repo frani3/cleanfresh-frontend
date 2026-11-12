@@ -46,7 +46,7 @@ Consecuencias:
   EC2 `cleanfresh-ms`.
 - Despliegue: el compose único corre en la EC2 `cleanfresh-ms`; la EC2 `cleanfresh-mq` queda sin uso (detenerla después
   de verificar). Antes, comprobar la memoria de `cleanfresh-ms` (`free -h`) y, si no alcanza, subir el tipo de instancia.
-- Se actualizan `README.md` de `despliegue/` y de `mq/`, la guía de demostración y `DEMOSTRACIONES.md` (terminales,
+- Se actualizan `README.md` de `despliegue/` y de `mq/`, la guía de operación (`demostraciones/OPERACION.md`) y `demostraciones/RABBITMQ.md` (terminales,
   túnel y carpeta).
 
 ## Fuera de alcance

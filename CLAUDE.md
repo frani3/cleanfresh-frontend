@@ -349,7 +349,7 @@ sin argumentos, dead-lettering por **políticas** (`policy.email.dlx`, `policy.k
 también la replicación porque solo rige una política por cola) y 9 bindings (`cmd.topic`: `email.#`, `kitchen.#`, `invoice.#`). **Los servicios se ven por su nombre en la consola de RabbitMQ (Spec 038):**
 conexiones `ms-cleanfresh-notificaciones` y `ms-cleanfresh-orders`, y consumidores `ms-cleanfresh-notificaciones.<cola>`. Cada mensaje lleva su **tipo de notificación** como propiedad AMQP `type` (`ORDEN_CREADA`, `ORDEN_LISTA`, `ORDEN_ESTADO`) y las cabeceras
 `destinatario` (`SUCURSAL`/`CLIENTE`/`TALLER`) y `estado`, visibles en la consola en Queues → cola → Get messages (Spec 039). La demostración para el
-profesor (notificaciones en los dos sentidos y con el servicio caído) es `EP2/despliegue/demo-notificaciones.sh` (guía 5.9). `orders` publica comandos
+profesor (notificaciones en los dos sentidos y con el servicio caído) es `EP2/despliegue/demo-notificaciones.sh` (`EP2/demostraciones/OPERACION.md` 5.9 y `RABBITMQ.md`). `orders` publica comandos
 (`email.send`, `kitchen.ticket`, `invoice.gen`; las órdenes de *Servicio exprés* van por `cmd.topic` con las
 variantes `.high`, `.thermal` y `.pdf`) y `notificaciones` los consume con ACK manual, 3 intentos e idempotencia por
 `eventId`; lo que falla va a la DLQ y queda registrado (`/api/muertos`). `ms-cleanfresh-mq-admin` crea y elimina
@@ -506,9 +506,18 @@ automáticamente y el segundo es la portada del repo):
 - **`EP1/`** — entrega 1 (cerrada): Cognito + BFF + API Gateway + EC2.
   Incluye `EP1/specs/` (specs/fixes 001–028), `EP1/EVIDENCIA-EP1.md` y las
   explicaciones `EP1/EXPLICACION-*.md`.
-- **`EP2/`** — entrega 2 (en curso): toda documentación nueva va acá.
-  Arquitectura objetivo en [`EP2/ARQUITECTURA.md`](EP2/ARQUITECTURA.md) e
-  índice de specs (029 en adelante) en [`EP2/specs/README.md`](EP2/specs/README.md).
+- **`EP2/`** — entrega 2 (en curso): toda documentación nueva va acá. El índice
+  de todo es [`EP2/README.md`](EP2/README.md) (Spec 043):
+  - [`EP2/ARQUITECTURA.md`](EP2/ARQUITECTURA.md) y `EP2/EVIDENCIA-EP2.md`
+  - `EP2/demostraciones/`: [`OPERACION.md`](EP2/demostraciones/OPERACION.md) (operar y verificar; antes
+    `GUIA-DEMOSTRACION.md`) y [`RABBITMQ.md`](EP2/demostraciones/RABBITMQ.md) (las 3 demos de RabbitMQ)
+  - `EP2/despliegue/`: compose, scripts y `mq/` (clúster RabbitMQ)
+  - [`EP2/specs/README.md`](EP2/specs/README.md): índice de specs (029 en adelante)
+
+**Reglas de la documentación (Spec 043):** los datos que cambian (IP, recursos) se escriben una sola vez, en este
+archivo, y los demás documentos lo enlazan; ningún archivo del repo lleva contraseñas ni tokens; los otros 7 repos
+(BFF y microservicios) tienen un `CLAUDE.md` **corto** con lo propio del servicio y un enlace a este, así que ya no hay que
+sincronizar copias de este archivo.
 
 Los cambios funcionales se documentan con metodología Spec-Driven
 Development manual (índice en [`EP1/specs/README.md`](EP1/specs/README.md)):

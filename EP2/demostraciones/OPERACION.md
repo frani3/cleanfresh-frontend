@@ -1,22 +1,37 @@
-# Guía de demostración y operación — EP2
+# Operación y verificación — EP2
 
-Comandos para operar las EC2 y pasos para demostrar, en vivo, todo lo
-implementado en las Specs 029 a 033. Los valores de los recursos están en la sección
-"Despliegue en AWS" de [`CLAUDE.md`](../CLAUDE.md). No incluye contraseñas ni
-tokens.
+Comandos para operar las EC2 y pasos para demostrar, en vivo, todo lo implementado en las Specs 029 a 039. No incluye
+contraseñas ni tokens. Antes se llamaba `GUIA-DEMOSTRACION.md`.
+
+> **Las tres demostraciones de RabbitMQ que pide el profesor** (servicio caído, nodo caído y cola muerta) están, paso a paso y
+> para ensayar con otra persona, en [`RABBITMQ.md`](RABBITMQ.md). Este documento es la guía general de operación.
+
+## Contenido
+
+| Sección | Qué hay |
+|---|---|
+| [0. Datos rápidos](#0-datos-rápidos) | Dónde están las IP y las carpetas |
+| [1. Antes de la demostración](#1-antes-de-la-demostración-checklist) | Checklist con el laboratorio encendido |
+| [2. Conectarse a las EC2](#2-conectarse-a-las-ec2) | SSH y grupos de seguridad |
+| [3. Verificación automática](#3-verificación-automática-ec2-2) | `verificar.sh` |
+| [4. Operar los contenedores](#4-operar-los-contenedores) | Logs, reinicios, actualizar el BFF |
+| 5.1 a 5.9 | Demostrar cada cosa implementada (microservicios, bases, RabbitMQ, roles, red, reinicios, notificaciones, desacople y la demo del profesor) |
+| [6. Problemas frecuentes](#6-problemas-frecuentes) | Síntoma y solución |
+| [7. Al terminar la evaluación](#7-al-terminar-la-evaluación) | Apagar y liberar lo que cobra |
 
 ## 0. Datos rápidos
 
-| Recurso | Valor |
-|---|---|
-| EC2 #1 `cleanfresh-bff` | **IP fija (Elastic IP) `3.213.118.143`** (BFF en Docker, `:8080`); IP privada `172.31.33.129` |
-| EC2 #2 `cleanfresh-ms` | IP privada `172.31.39.91`; IP pública **cambia con cada Stop/Start** (última conocida: `52.90.146.243`; la actual se ve en la consola de EC2) |
-| API Gateway | `https://0ksy5y3586.execute-api.us-east-1.amazonaws.com` |
-| Frontend | `http://localhost:3000` (se abre siempre con ese origen) |
-| EC2 #3 `cleanfresh-mq` | IP privada `172.31.18.141`; IP pública cambia con cada Stop/Start (la actual se ve en la consola de EC2). Clúster RabbitMQ en `~/mq`; panel en `:15672` y `:15673` |
-| RDS | `cleanfresh-db`, bases `orders_db`, `catalog_db` y `notificaciones_db` |
+Las IP, los nombres de recursos y los grupos de seguridad están en la sección "Despliegue en AWS" de
+[`CLAUDE.md`](../../CLAUDE.md) (es la única fuente: aquí no se repiten para que no queden desactualizados). Lo que cambia con
+cada Stop/Start del laboratorio son las **IP públicas** de `cleanfresh-ms` y `cleanfresh-mq` (se ven en la consola de EC2);
+el BFF tiene Elastic IP y las IP privadas no cambian.
 
-Carpeta de trabajo en la EC2 #2: `~/cleanfresh/cleanfresh-frontend/EP2/despliegue`.
+| Recurso | Dónde |
+|---|---|
+| Frontend | `http://localhost:3000` (se abre siempre con ese origen) |
+| API Gateway | variable `REACT_APP_BFF_URL` del `.env` del frontend |
+| Carpeta de trabajo en la EC2 #2 | `~/cleanfresh/cleanfresh-frontend/EP2/despliegue` |
+| Clúster RabbitMQ en la EC2 `cleanfresh-mq` | `~/mq` (panel en `:15672` y `:15673`) |
 
 ## 1. Antes de la demostración (checklist)
 
@@ -142,12 +157,15 @@ base no responde desde internet, pero la app funciona.
 
 ### 5.3 RabbitMQ: clúster, mensajería y administrador (Spec 033)
 
+> Las demostraciones guiadas (servicio de notificaciones caído, nodo caído y cola muerta) están en [`RABBITMQ.md`](RABBITMQ.md);
+> aquí va la verificación técnica y el administrador.
+
 La mensajería corre en la EC2 `cleanfresh-mq` (IP privada `172.31.18.141`): dos nodos
 RabbitMQ (`rabbit1`, `rabbit2`) en un solo clúster, con las 3 colas de comandos
 (`q.cmd.email`, `q.cmd.kitchen`, `q.cmd.invoice`), cada una con su cola de mensajes muertos
 (`.dlq`), y los exchanges `cmd.direct`, `cmd.topic` y `cmd.dead.dlx`. Detalle en
-[`despliegue/mq/README.md`](despliegue/mq/README.md) y en la
-[Spec 033](specs/033-spec-rabbitmq.md).
+[`despliegue/mq/README.md`](../despliegue/mq/README.md) y en la
+[Spec 033](../specs/033-spec-rabbitmq.md).
 
 **Panel de RabbitMQ** (solo desde tu IP): `http://<IP-PUBLICA-EC2-MQ>:15672` (nodo 1) y `:15673`
 (nodo 2); usuario y clave en el `.env` de `~/mq`. La IP pública de esta EC2 también cambia con
@@ -279,6 +297,12 @@ microservicios); el panel (15672) solo responde desde tu IP.
 En cambio `Test-NetConnection 3.213.118.143 -Port 8080` sí responde: es la única
 entrada pública, detrás de API Gateway.
 
+### 5.6 Reinicios (ACs 14–15)
+
+Con la consola: **Instance state → Reboot instance** en cada EC2. Tras ~2 minutos
+`docker ps` debe mostrar los contenedores `Up` sin intervención. No usar
+Stop/Start si no hace falta: cambia la IP pública.
+
 ### 5.7 Notificaciones: aviso al Operador y al Cliente, con botón de leído (Specs 030 y 034)
 
 Cada mensaje de RabbitMQ se convierte en un aviso guardado y dirigido, que se ve en el **módulo de
@@ -321,13 +345,53 @@ orden desde la app (el cambio de estado funciona igual), y al hacer
 `docker compose start notificaciones` el aviso aparece solo, porque esperó en la
 cola.
 
-### 5.6 Reinicios (ACs 14–15)
+### 5.8 Desacople: la solicitud sobrevive a la caída de notificaciones
 
-Con la consola: **Instance state → Reboot instance** en cada EC2. Tras ~2 minutos
-`docker ps` debe mostrar los contenedores `Up` sin intervención. No usar
-Stop/Start si no hace falta: cambia la IP pública.
+Es el caso que hay que mostrar: el cliente solicita un servicio, los comandos llegan a RabbitMQ,
+**pero el microservicio de notificaciones está caído**. La solicitud no se pierde: queda
+guardada, los comandos esperan en las colas y, cuando `notificaciones` vuelve a levantarse, los
+consume y genera el aviso y el ticket de taller.
+
+**Automático (recomendado), en la EC2 #2:**
+
+```bash
+cd ~/cleanfresh/cleanfresh-frontend && git pull
+cd EP2/despliegue
+./demo-desacople.sh
+```
+
+El script va narrando seis pasos y verifica cada uno:
+
+1. Estado inicial: todo `Up`, las colas vacías y un consumidor en cada una (lee las colas por la API de RabbitMQ).
+2. Detiene `notificaciones` (la "caída") y comprueba que su puerto ya no responde y que las colas quedaron sin consumidores.
+3. Crea la solicitud del cliente (`POST /api/orders`): responde **201** y la orden queda
+   guardada en la RDS aunque notificaciones esté caído.
+4. Muestra que las colas pasaron de 0 a **mensajes esperando** y que todavía no existe el aviso.
+5. Levanta `notificaciones` de nuevo.
+6. Comprueba que consumió lo que esperaba: apareció el aviso para el Operador de Providencia, el ticket de
+   taller, las colas volvieron a 0 y hay un solo aviso (sin duplicados).
+
+Termina con `Desacople demostrado: la solicitud sobrevivió a la caída y llegó cuando el servicio volvió.`
+Deja `notificaciones` levantado y una orden de prueba "Demo-Desacople-…". Si dice `Permission denied`,
+usar `bash demo-desacople.sh`.
+
+**Manual, mostrando el panel de RabbitMQ** (para enseñar el mensaje dentro de la cola):
+
+1. En la EC2 #2: `docker compose stop notificaciones`.
+2. En la app, como **Cliente**, solicitar un servicio. Funciona igual: la orden aparece en "Tus pedidos".
+3. Panel de RabbitMQ → **Queues**: `q.cmd.email` y `q.cmd.kitchen` con *Ready = 1* y *Consumers = 0*.
+   Con **Get messages** (*Ack mode: Nack message requeue true*, para no consumirlo) se ve el JSON del
+   comando con su `eventId`, `traceId` y el `payload`.
+4. En la app, como **Operador**: la campanita todavía **no** muestra ese pedido.
+5. `docker compose start notificaciones`. A los pocos segundos: en los logs
+   (`docker compose logs -f notificaciones`) aparece el aviso y el ticket, las colas vuelven a 0 y la
+   campanita del Operador (consulta cada 15 s) muestra "Pedido nuevo".
+
+Nota: las cifras del panel se refrescan cada pocos segundos.
 
 ### 5.9 Demostración para el profesor: notificaciones en los dos sentidos y con el servicio caído (Spec 038)
+
+> El paso a paso de las tres demostraciones, con lo que se espera ver en cada pantalla, está en [`RABBITMQ.md`](RABBITMQ.md).
 
 El profesor pidió ver tres cosas: **recibir notificaciones**, que **Cliente → Operador y Operador → Cliente sigan funcionando aunque el servicio se
 caiga** (el mensaje persiste y llega cuando el servicio vuelve), y **mostrar en la consola de RabbitMQ que `ms-cleanfresh-notificaciones` responde**.
@@ -377,57 +441,13 @@ entregado o cancelado, para el cliente). La clave de ruteo (`email.send`, `kitch
 
 La demostración anterior (`demo-desacople.sh`, 5.8) cubre solo el sentido Cliente → Operador.
 
-### 5.8 Desacople: la solicitud sobrevive a la caída de notificaciones
-
-Es el caso que hay que mostrar: el cliente solicita un servicio, los comandos llegan a RabbitMQ,
-**pero el microservicio de notificaciones está caído**. La solicitud no se pierde: queda
-guardada, los comandos esperan en las colas y, cuando `notificaciones` vuelve a levantarse, los
-consume y genera el aviso y el ticket de taller.
-
-**Automático (recomendado), en la EC2 #2:**
-
-```bash
-cd ~/cleanfresh/cleanfresh-frontend && git pull
-cd EP2/despliegue
-./demo-desacople.sh
-```
-
-El script va narrando seis pasos y verifica cada uno:
-
-1. Estado inicial: todo `Up`, las colas vacías y un consumidor en cada una (lee las colas por la API de RabbitMQ).
-2. Detiene `notificaciones` (la "caída") y comprueba que su puerto ya no responde y que las colas quedaron sin consumidores.
-3. Crea la solicitud del cliente (`POST /api/orders`): responde **201** y la orden queda
-   guardada en la RDS aunque notificaciones esté caído.
-4. Muestra que las colas pasaron de 0 a **mensajes esperando** y que todavía no existe el aviso.
-5. Levanta `notificaciones` de nuevo.
-6. Comprueba que consumió lo que esperaba: apareció el aviso para el Operador de Providencia, el ticket de
-   taller, las colas volvieron a 0 y hay un solo aviso (sin duplicados).
-
-Termina con `Desacople demostrado: la solicitud sobrevivió a la caída y llegó cuando el servicio volvió.`
-Deja `notificaciones` levantado y una orden de prueba "Demo-Desacople-…". Si dice `Permission denied`,
-usar `bash demo-desacople.sh`.
-
-**Manual, mostrando el panel de RabbitMQ** (para enseñar el mensaje dentro de la cola):
-
-1. En la EC2 #2: `docker compose stop notificaciones`.
-2. En la app, como **Cliente**, solicitar un servicio. Funciona igual: la orden aparece en "Tus pedidos".
-3. Panel de RabbitMQ → **Queues**: `q.cmd.email` y `q.cmd.kitchen` con *Ready = 1* y *Consumers = 0*.
-   Con **Get messages** (*Ack mode: Nack message requeue true*, para no consumirlo) se ve el JSON del
-   comando con su `eventId`, `traceId` y el `payload`.
-4. En la app, como **Operador**: la campanita todavía **no** muestra ese pedido.
-5. `docker compose start notificaciones`. A los pocos segundos: en los logs
-   (`docker compose logs -f notificaciones`) aparece el aviso y el ticket, las colas vuelven a 0 y la
-   campanita del Operador (consulta cada 15 s) muestra "Pedido nuevo".
-
-Nota: las cifras del panel se refrescan cada pocos segundos.
-
 ## 6. Problemas frecuentes
 
 | Síntoma | Causa y solución |
 |---|---|
 | `redirect_mismatch` al iniciar sesión | El App Client de Cognito debe tener la callback URL exacta `http://localhost:3000/` (con la barra final) |
 | El frontend no llama al BFF correcto | `REACT_APP_BFF_URL` en el `.env` del frontend; reiniciar `npm start` tras cambiarlo |
-| `orders`/`catalog` reinician en bucle | La base no existe o falla la conexión: `docker compose logs orders`. Ver `ARQUITECTURA.md` (GRANT en RDS) |
+| `orders`/`catalog` reinician en bucle | La base no existe o falla la conexión: `docker compose logs orders`. Ver [`ARQUITECTURA.md`](../ARQUITECTURA.md) (GRANT en RDS) |
 | SSH sin respuesta tras reiniciar la EC2 #2 | Memoria agotada; ya está en `t3.medium` con swap persistente. Si pasa: Stop → Start |
 | `notificaciones` no registra avisos | Revisar `RABBIT_ENABLED=true`, `RABBITMQ_ADDRESSES` (IP privada de `cleanfresh-mq`) y las credenciales en el `.env`; el grupo `cleanfresh-sg-mq` debe aceptar 5672–5673 desde `cleanfresh-sg-ms`. `docker compose logs notificaciones` muestra si se conectó (`Created new connection`) |
 | El módulo de notificaciones no muestra avisos (o la campanita no cuenta) | Revisar que `notificaciones` esté `Up` y con `RABBIT_ENABLED=true`, y que el BFF tenga `NOTIFICACIONES_SERVICE_URL` (si falta, apunta a `localhost:8083`). Probar `curl localhost:8083/api/notificaciones` en la EC2 #2 |

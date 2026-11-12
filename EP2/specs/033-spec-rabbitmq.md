@@ -327,7 +327,7 @@ los espejos), y la EC2 de mensajería se lanzó como `t3.micro` y hubo que pasar
 
 | # | AC | Estado |
 |---|---|---|
-| 20 | Evidencia en `EP2/EVIDENCIA-EP2.md` y guía de demostración con: dos nodos, caída de un nodo, mensaje a la DLQ, idempotencia, desacople y uso del administrador | ✅ Cumple: [`EVIDENCIA-EP2.md`](../EVIDENCIA-EP2.md) sección 10 y [`GUIA-DEMOSTRACION.md`](../GUIA-DEMOSTRACION.md) 5.3 y 5.8. `ARQUITECTURA.md` y `CLAUDE.md` (sincronizado en los 8 repos) actualizados |
+| 20 | Evidencia en `EP2/EVIDENCIA-EP2.md` y guía de demostración con: dos nodos, caída de un nodo, mensaje a la DLQ, idempotencia, desacople y uso del administrador | ✅ Cumple: [`EVIDENCIA-EP2.md`](../EVIDENCIA-EP2.md) sección 10 y [`demostraciones/OPERACION.md`](../demostraciones/OPERACION.md) 5.3 y 5.8. `ARQUITECTURA.md` y `CLAUDE.md` (sincronizado en los 8 repos) actualizados |
 
 **Pendiente para completar la verificación:** el 403 con rol Cliente en `/api/mq/**`; repetir en AWS el
 crear/eliminar del administrador; la DLQ de `q.cmd.invoice` con consumidores reales en AWS; capturas de pantalla.
