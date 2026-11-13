@@ -1,10 +1,17 @@
-# EC2 #2 (EP2): los 6 microservicios (con el administrador de RabbitMQ). El BFF corre aparte en la EC2 #1.
+# EC2 #2 (EP2 y EP5): los 7 microservicios (con los administradores de RabbitMQ y de Kafka). El BFF corre aparte en la EC2 #1.
 # Se espera que los repos estén clonados lado a lado (../../../ms-cleanfresh-*).
 # Variables en el archivo .env junto a este (ver .env.example); no se sube a git.
-# Cada JVM con su heap acotado: con el valor por defecto (1/4 de la RAM) cinco
-# servicios Java en una misma EC2 la dejan sin memoria.
+# Cada JVM con su heap acotado: con el valor por defecto (1/4 de la RAM) varios
+# servicios Java en una misma EC2 la dejan sin memoria. Con los consumidores de Kafka (EP5)
+# la EC2 pasa de t3.medium a t3.large (ver EP5/despliegue/AWS.md).
 x-jvm: &jvm
   JAVA_TOOL_OPTIONS: "-Xmx256m -Xss512k"
+
+# Kafka (Spec 044): apagado por defecto, como RabbitMQ. KAFKA_BOOTSTRAP_SERVERS lleva los 3 brokers
+# (IP PRIVADA de la EC2 cleanfresh-kafka, puertos 9092, 9093 y 9094).
+x-kafka: &kafka
+  KAFKA_ENABLED: ${KAFKA_ENABLED:-false}
+  KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092,localhost:9093,localhost:9094}
 
 services:
   orders:
@@ -12,7 +19,7 @@ services:
     ports: ["8081:8081"]
     restart: unless-stopped
     environment:
-      <<: *jvm
+      <<: [*jvm, *kafka]
       DB_URL: ${ORDERS_DB_URL}
       DB_USER: ${ORDERS_DB_USER}
       DB_PASSWORD: ${ORDERS_DB_PASSWORD}
@@ -55,14 +62,33 @@ services:
       RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
       RABBITMQ_MGMT_URLS: ${RABBITMQ_MGMT_URLS:-http://localhost:15672/api,http://localhost:15673/api}
 
+  # EP5 (Spec 044): consume orders.events de Kafka y calcula los reportes. Base propia: reportes_db.
   reportes:
     build: ../../../ms-cleanfresh-reportes
     ports: ["8084:8084"]
     restart: unless-stopped
-    environment: *jvm
+    environment:
+      <<: [*jvm, *kafka]
+      DB_URL: ${REPORTES_DB_URL}
+      DB_USER: ${REPORTES_DB_USER}
+      DB_PASSWORD: ${REPORTES_DB_PASSWORD}
 
+  # EP5 (Spec 044): consume audit.timeline y orders.events y guarda la auditoría. Base propia: auditoria_db.
   auditoria:
     build: ../../../ms-cleanfresh-auditoria
     ports: ["8085:8085"]
     restart: unless-stopped
-    environment: *jvm
+    environment:
+      <<: [*jvm, *kafka]
+      DB_URL: ${AUDITORIA_DB_URL}
+      DB_USER: ${AUDITORIA_DB_USER}
+      DB_PASSWORD: ${AUDITORIA_DB_PASSWORD}
+
+  # EP5 (Spec 044): administrador de Kafka (tópicos, configuraciones y consumer groups). Sin base de datos.
+  kafka-admin:
+    build: ../../../ms-cleanfresh-kafka-admin
+    ports: ["8087:8087"]
+    restart: unless-stopped
+    environment:
+      <<: *jvm
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092,localhost:9093,localhost:9094}

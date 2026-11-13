@@ -559,6 +559,13 @@ de tocar algo ya resuelto.
 
 ## Pendientes
 
+- [ ] **Spec 047 (Kafka en AWS):** el laboratorio estaba apagado y hay que ejecutar [`EP5/despliegue/AWS.md`](EP5/despliegue/AWS.md): crear la EC2 `cleanfresh-kafka` y su grupo de seguridad,
+  las bases `reportes_db` y `auditoria_db` en la RDS (`rds-crear-bases.sh`), pasar `cleanfresh-ms` a `t3.large` y 20 GB, actualizar los servicios y el BFF (`KAFKA_ADMIN_SERVICE_URL`), y
+  verificarlo (`verificar-kafka.sh`, `verificar.sh`, el panel Admin con el login real). Todo se probó en local (Specs 044 a 046).
+- [ ] **Publicar `ms-cleanfresh-kafka-admin` en GitHub** (el código está en `C:\Users\franc\ms-cleanfresh-kafka-admin`, con su commit local; falta crear el repositorio `frani3/ms-cleanfresh-kafka-admin` y
+  hacer el push: la creación del repositorio público quedó pendiente de tu visto bueno). Hasta entonces el compose de aplicaciones de AWS no puede clonarlo. Después, agregarlo a la tabla de repositorios de
+  este archivo y del README.
+- [ ] **Spec 044 (Kafka):** repetir en AWS `verificar.sh`, `verificar-flujo.sh` y `demo-notificaciones.sh` con Kafka encendido y apagado (en local ya se comprobó que RabbitMQ no cambia).
 - [ ] **Spec 033 (RabbitMQ):** falta probar el 403 de `/api/mq/**` con el rol Cliente (solo se probó Operador, y
   Admin con 200) y repetir en AWS la creación/eliminación de colas desde el administrador (se verificó contra el
   clúster local). La DLQ de `q.cmd.invoice` solo se probó en vivo en local.

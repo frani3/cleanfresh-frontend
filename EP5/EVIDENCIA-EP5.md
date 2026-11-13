@@ -240,3 +240,42 @@ Con el rango de 7 días el gráfico pasa a agruparse por día: ![Analítica 7 d�
 ![Auditoría](capturas/panel-admin-auditoria.png)
 
 Compilación: `CI=true npm run build` → "Compiled successfully" (el linter trata las advertencias como error). Pruebas de lógica pura del frontend: 46 en verde (23 nuevas de `utils/reports`: formato de minutos y dinero, barras, ventas por hora y por día, estados activos, etiquetas de eventos, parámetros de filtro y paginado).
+
+## 6. RabbitMQ no se ve afectado (AC 10 de la Spec 044)
+
+`orders` local contra el RabbitMQ y el Kafka locales, con `RABBIT_ENABLED=true`: un pedido con `KAFKA_ENABLED=true` y otro con `KAFKA_ENABLED=false`.
+
+```
+orders con RABBIT_ENABLED=true y KAFKA_ENABLED=true : orden ORD-0018 -> q.cmd.kitchen 0 -> 1 | eventos en orders.events 27 -> 28
+orders con RABBIT_ENABLED=true y KAFKA_ENABLED=false: orden ORD-0019 -> q.cmd.kitchen 1 -> 2 | eventos en orders.events 28 -> 28
+Estado final de las colas (tras esperar el refresco de estadísticas del panel): q.cmd.email 2 | q.cmd.kitchen 2 | q.cmd.invoice 0
+```
+
+Con Kafka encendido, `orders` publica en los dos sistemas; con Kafka apagado, RabbitMQ recibe exactamente los mismos comandos (aviso y ticket de taller) y no se publica nada en Kafka. Las 18 pruebas de
+`RabbitOrderEventPublisherTests` de `orders` siguen en verde y `OrdenEventListener` llama a todos los publicadores activos, cada uno con su propio manejo de errores. Los scripts de EP2
+(`verificar.sh`, `verificar-flujo.sh` y `demo-notificaciones.sh`) se repetirán en AWS (Spec 047).
+
+## 7. Scripts de despliegue y verificación (preparación de la Spec 047)
+
+**`verificar-kafka.sh --caida`** contra el clúster local (con el administrador y los dos consumidores levantados), todo en "OK":
+
+```
+1) Zookeeper: 3 nodos, un líder y dos seguidores            OK   1 líder y 2 seguidores
+2) Brokers: 3 en el clúster                                  OK   3 brokers: kafka1=1 kafka2=2 kafka3=3
+3) Tópicos del sistema: 3 particiones, 3 réplicas, política y retención
+   OK   orders.events: 3 particiones, 3 réplicas, delete, retención 604800000 ms, min.insync.replicas=2
+   OK   audit.timeline: 3 particiones, 3 réplicas, compact,delete, retención 2592000000 ms, min.insync.replicas=2
+   OK   orders.events.reportes.DLT / orders.events.auditoria.DLT / audit.timeline.auditoria.DLT: 3 particiones, 3 réplicas, delete, 1209600000 ms
+4) Réplicas sincronizadas                                    OK   ninguna partición con réplicas sin sincronizar
+5) Envío y lectura con acks=all (tópico temporal)            OK   un mensaje publicado con acks=all se leyó de vuelta
+6) Caída de un broker: el sistema sigue                      OK   con kafka3 detenido se publicó y se leyó (acks=all con min.insync.replicas=2)
+                                                             OK   kafka3 volvió y se resincronizó (sin particiones sub-replicadas)
+7) Administrador de Kafka                                    OK   ve los 3 brokers · lista los 5 tópicos · POST /topologia/base idempotente (200)
+8) Consumidores                                              OK   grupo reportes-kpis: Stable, lag 0 · grupo auditoria-registro: Stable, lag 0
+Todo OK
+```
+
+**`rds-crear-bases.sh`** contra un PostgreSQL limpio: crea los roles `reportes_user` y `auditoria_user` y sus bases con ellos como dueños; una segunda ejecución no cambia nada (repetible); y el aislamiento
+funciona: `reportes_user` entra a `reportes_db` y a `auditoria_db` no (`permission denied for database`).
+
+**Compose de aplicaciones** (`EP2/despliegue/docker-compose.yml`, ahora con 7 servicios) validado con `docker compose config` usando las variables nuevas de `.env.example`.

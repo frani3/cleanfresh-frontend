@@ -60,3 +60,12 @@ docker compose exec -T kafka1 kafka-topics --bootstrap-server kafka1:29092 --des
 - **Zookeeper:** son 3 nodos para tener mayoría (tolera la caída de 1).
 - `docker compose down -v` borra los volúmenes (los tópicos y sus mensajes).
 - RabbitMQ no se toca: sus composes y su topología están en `EP2/despliegue/`.
+
+## Verificar y desplegar
+
+| Qué | Cómo |
+|---|---|
+| Verificar el clúster (Zookeeper, brokers, tópicos 3×3, réplicas sincronizadas, envío con `acks=all`) | `cd kafka && ./verificar-kafka.sh` (con `--caida` detiene un broker y comprueba que el sistema sigue; con `--solo-apps` revisa por HTTP el administrador y los consumidores) |
+| Crear las bases de `reportes` y `auditoria` en la RDS | `./rds-crear-bases.sh` (repetible; ver [`AWS.md`](AWS.md)) |
+| Llevarlo todo a AWS (EC2 de Kafka, grupos de seguridad, RDS, microservicios y BFF) | [`AWS.md`](AWS.md) |
+| Los servicios que usan Kafka | En el compose de aplicaciones, [`../../EP2/despliegue/docker-compose.yml`](../../EP2/despliegue/docker-compose.yml) (`KAFKA_ENABLED` y `KAFKA_BOOTSTRAP_SERVERS` en su `.env`) |
