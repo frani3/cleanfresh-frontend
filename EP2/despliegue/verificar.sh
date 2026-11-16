@@ -30,8 +30,8 @@ done
 echo "2) Servicios responden"
 n=$(curl -s localhost:8081/api/orders  | grep -o '"numeroOrden"' | wc -l); [ "$n" -gt 0 ] && ok "orders: $n órdenes" || fallo "orders sin datos"
 n=$(curl -s localhost:8082/api/catalog | grep -o '"nombre"' | wc -l);      [ "$n" -gt 0 ] && ok "catalog: $n servicios" || fallo "catalog sin datos"
-curl -s localhost:8084/api/reportes  | grep -q '"branch"' && ok "reportes: respuesta fija" || fallo "reportes"
-curl -s localhost:8085/api/auditoria | grep -q '"actor"'  && ok "auditoria: respuesta fija" || fallo "auditoria"
+[ "$(curl -s -o /dev/null -w '%{http_code}' localhost:8084/api/reportes/kpis)" = 200 ] && ok "reportes: KPIs calculados con los eventos de Kafka (HTTP 200)" || fallo "reportes"
+curl -s localhost:8085/api/auditoria | grep -q '"total"' && ok "auditoria: línea de tiempo desde Kafka responde" || fallo "auditoria"
 cod=$(curl -s -o /dev/null -w '%{http_code}' "localhost:8083/api/notificaciones")
 [ "$cod" = "200" ] && ok "notificaciones: API de avisos responde (HTTP 200)" || fallo "notificaciones no responde (HTTP $cod)"
 topo=$(curl -s -m 15 localhost:8086/api/mq/topologia)

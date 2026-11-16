@@ -217,8 +217,8 @@ Puntos a tener en cuenta:
 | ms-cleanfresh-orders | 8081 | `orders_db` (RDS) | migra de memoria a PostgreSQL; publica los comandos de RabbitMQ al crear una orden y al despacharla |
 | ms-cleanfresh-catalog | 8082 | `catalog_db` (RDS) | migra de memoria a PostgreSQL |
 | ms-cleanfresh-notificaciones | 8083 | `notificaciones_db` (RDS) | consume las 3 colas de RabbitMQ (aviso, ticket de taller, boleta), registra los mensajes de las DLQ |
-| ms-cleanfresh-reportes | 8084 | no | esqueleto: controller con respuesta fija |
-| ms-cleanfresh-auditoria | 8085 | no | esqueleto: controller con respuesta fija |
+| ms-cleanfresh-reportes | 8084 | no | esqueleto en EP2 (respuesta fija); en EP5 calcula KPIs con Kafka y tiene `reportes_db` ([`../EP5/ARQUITECTURA.md`](../EP5/ARQUITECTURA.md)) |
+| ms-cleanfresh-auditoria | 8085 | no | esqueleto en EP2 (respuesta fija); en EP5 guarda la auditoría desde Kafka y tiene `auditoria_db` ([`../EP5/ARQUITECTURA.md`](../EP5/ARQUITECTURA.md)) |
 | ms-cleanfresh-mq-admin | 8086 | no | administra RabbitMQ (colas, exchanges, bindings, métricas); solo por el BFF y con rol Admin |
 
 ## Entorno AWS desplegado
