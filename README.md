@@ -89,3 +89,4 @@ verificación, con una numeración única que continúa entre entregas (índices
 | [ms-cleanfresh-reportes](https://github.com/frani3/ms-cleanfresh-reportes) | Reportes (esqueleto) |
 | [ms-cleanfresh-auditoria](https://github.com/frani3/ms-cleanfresh-auditoria) | Auditoría (esqueleto) |
 | [ms-cleanfresh-mq-admin](https://github.com/frani3/ms-cleanfresh-mq-admin) | Administra RabbitMQ (solo Admin, vía BFF) |
+| [ms-cleanfresh-kafka-admin](https://github.com/frani3/ms-cleanfresh-kafka-admin) | Administra Kafka: tópicos, configuraciones y consumer groups (solo Admin, vía BFF) |

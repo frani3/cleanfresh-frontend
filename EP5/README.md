@@ -44,5 +44,5 @@ Las reglas de documentación son las de [`../EP2/README.md`](../EP2/README.md): 
 | [ms-cleanfresh-orders](https://github.com/frani3/ms-cleanfresh-orders) | Productor: publica los eventos de negocio y la auditoría |
 | [ms-cleanfresh-reportes](https://github.com/frani3/ms-cleanfresh-reportes) | Consumidor: KPIs, ventas por hora, lead time y servicios más pedidos |
 | [ms-cleanfresh-auditoria](https://github.com/frani3/ms-cleanfresh-auditoria) | Consumidor: línea de tiempo y trazabilidad de las órdenes |
-| ms-cleanfresh-kafka-admin | Administrador de Kafka: tópicos, configuraciones y consumer groups (el repositorio se publica en GitHub en la entrega) |
+| [ms-cleanfresh-kafka-admin](https://github.com/frani3/ms-cleanfresh-kafka-admin) | Administrador de Kafka: tópicos, configuraciones y consumer groups |
 | [ms-cleanfresh-bff](https://github.com/frani3/ms-cleanfresh-bff) | `/api/kafka/**`, `/api/reportes/**` y `/api/auditoria/**` para el Admin |
